@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "locale": "English_United States.1252",
+  "metadata": {
+    "appmode": "python-dash",
+    "entrypoint": "app.py"
+  },
+  "python": {
+    "version": "3.9.13",
+    "package_manager": {
+      "name": "pip",
+      "version": "22.0.4",
+      "package_file": "requirements.txt"
+    }
+  },
+  "files": {
+    "requirements.txt": {
+      "checksum": "1aca663f9d883dc4eddc6a179f2e1308"
+    },
+    ".env": {
+      "checksum": "4aa6a68bcfcfc527b91dcb5339c04473"
+    },
+    ".env.example": {
+      "checksum": "ea87c04534354d0759210b120f68b6c1"
+    },
+    ".gitignore": {
+      "checksum": "2ef1298ab63e1ca4a3cace727c554405"
+    },
+    "README.md": {
+      "checksum": "2629ddf74f8814e632f4cf51f8f26fc1"
+    },
+    "app.py": {
+      "checksum": "e228cfc8f9e4cc1546e7ff5266449120"
+    },
+    "auth.py": {
+      "checksum": "e2e4998bb2bcfb50c15eba1ca1ad18b7"
+    },
+    "constants.py": {
+      "checksum": "887760006546606b7844946327ce32fc"
+    },
+    "queries.py": {
+      "checksum": "13a6cffd600a712eb96c5245f1e9acba"
+    },
+    "server.py": {
+      "checksum": "9e54e325d4421d58221999eb13ce49f6"
+    },
+    "utils.py": {
+      "checksum": "f7b3702ed0246dc1c82ab50f03d09632"
+    }
+  }
+}
