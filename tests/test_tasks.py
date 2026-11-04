@@ -146,6 +146,45 @@ def test_a_blocked_answer_is_retried_without_the_attached_pages(use_provider, gr
     assert [c[2] for c in provider.calls] == [1, 0] and result.records
 
 
+def test_a_one_page_section_too_large_with_its_page_image_is_retried_as_text(use_provider, green_pdf):
+    doc = read_document(green_pdf, "green.pdf")
+    doc.pages[0].table_like = True
+
+    def answer(kind, prompt, attachments):
+        if attachments:
+            raise AIResponseError("too large", too_long=True)
+        return line_rows(prompt)
+
+    provider = use_provider(Scripted(answer))
+    result = tasks.extract_budget_lines(doc, DocInfo(), noop_progress)
+    assert [c[2] for c in provider.calls] == [1, 0] and result.records and not result.failed_sections
+
+
+def test_a_section_too_large_for_the_model_is_split(use_provider):
+    doc = doc_with(8)
+
+    def answer(kind, prompt, attachments):
+        if len(re.findall(r"\[Page \d+\]", prompt)) > 2:
+            raise AIResponseError("too large", too_long=True)
+        return line_rows(prompt)
+
+    use_provider(Scripted(answer))
+    result = tasks.extract_budget_lines(doc, DocInfo(), noop_progress)
+    assert not result.failed_sections and {r["page"] for r in result.records} >= set(range(1, 9, 2))
+
+
+def test_a_tag_batch_too_large_for_the_model_is_halved(use_provider):
+    items = [{"id": i, "title": "Line %d" % i} for i in range(1, 41)]
+
+    def answer(kind, prompt, attachments):
+        if len(re.findall(r"^\[\d+\] Title", prompt, re.M)) > 10:
+            raise AIResponseError("too large", too_long=True)
+        return tag_rows(prompt)
+
+    use_provider(Scripted(answer))
+    assert len(tasks.tag_budget_lines(items, noop_progress)) == 40
+
+
 def test_a_fatal_error_stops_the_other_sections(use_provider):
     def answer(kind, prompt, attachments):
         raise AIQuotaError("daily limit")

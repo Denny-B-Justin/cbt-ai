@@ -88,10 +88,14 @@ def _extract_chunk(chunk: Chunk, doc: Document, info: DocInfo, cancelled, depth:
     except AIResponseError as exc:
         if depth >= MAX_SPLIT_DEPTH:
             raise
-        parts = split_chunk(chunk, doc) if exc.truncated or "JSON" in str(exc) else []
+        parts = []
+        if exc.truncated or exc.too_long or "JSON" in str(exc):
+            # a one-page section that is too large because of its page image is better sent as text than halved
+            if not (exc.too_long and attachments and chunk.first_page == chunk.last_page):
+                parts = split_chunk(chunk, doc)
         if parts:
             return [r for p in parts for r in _extract_chunk(p, doc, info, cancelled, depth + 1)]
-        if attachments and exc.blocked:               # try again with the text alone
+        if attachments and (exc.blocked or exc.too_long):   # try again with the text alone
             plain = Chunk(chunk.index, chunk.first_page, chunk.last_page, chunk.text, None)
             return _extract_chunk(plain, doc, info, cancelled, depth + 1)
         raise
@@ -168,7 +172,7 @@ def _tag_batch(batch: list[dict[str, Any]], cancelled, depth: int = 0) -> dict[i
         data = client.ask_json(prompt.TAG_SYSTEM, prompt.tag_prompt(batch), TAG_SCHEMA, max_output_tokens=16384,
                                cancelled=cancelled)
     except AIResponseError as exc:
-        if len(batch) > 1 and depth < MAX_SPLIT_DEPTH and (exc.truncated or "JSON" in str(exc)):
+        if len(batch) > 1 and depth < MAX_SPLIT_DEPTH and (exc.truncated or exc.too_long or "JSON" in str(exc)):
             mid = len(batch) // 2
             return {**_tag_batch(batch[:mid], cancelled, depth + 1), **_tag_batch(batch[mid:], cancelled, depth + 1)}
         raise

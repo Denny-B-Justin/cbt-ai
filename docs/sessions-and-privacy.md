@@ -37,12 +37,7 @@ Document text and, for table or scanned pages, the original PDF pages are sent t
 Budget briefs (numbers and line names) are sent for scoring. This is inherent to the design and is disclosed on the
 site in plain words ("read by an online AI service … please do not upload confidential documents").
 
-**Free vs. paid keys.** Under Google's current Gemini API terms, content submitted through unpaid (free-tier) services may be
-used to improve Google's products and may be read by human reviewers, and the terms ask users not to submit confidential or
-personal data to unpaid services. Paid services are excluded from product improvement (Google keeps logs for a limited
-period for abuse detection). Read the current terms at <https://ai.google.dev/gemini-api/terms> before deciding which kind
-of key a deployment uses. A demo with public or already-published budgets is fine on a free key; anything sensitive needs a
-paid key and a decision by the data owner.
+**Where text goes.** Model calls go only to the World Bank mAI gateway, which forwards them to the approved model. Usage is attributed to this app on Posit Connect.
 
 ## Concurrency and abuse limits
 

@@ -1,6 +1,6 @@
-"""The one door to the AI provider: picks the provider, paces calls and retries.
+"""The one door to the AI: paces calls and retries. The provider is ai/mai_llm.py (Posit mAI Gateway).
 
-A provider module (ai/gemini.py, later ai/claude.py) only has to offer:
+A provider only has to offer (the tests swap in a stand-in with the same functions):
 
     is_configured() -> bool
     model_name() -> str
@@ -9,15 +9,14 @@ A provider module (ai/gemini.py, later ai/claude.py) only has to offer:
 
 from __future__ import annotations
 
-import importlib
-import os
 import threading
-from types import ModuleType
 from collections.abc import Callable, Sequence
+from types import ModuleType
 from typing import Any
 
 from utils import constants as C
 
+from . import mai_llm
 from .ratelimit import RateLimiter, call_with_retries
 from .types import AIConfigError, Attachment
 
@@ -26,11 +25,7 @@ _lock = threading.Lock()
 
 
 def provider() -> ModuleType:
-    name = (os.getenv(C.ENV_AI_PROVIDER) or C.DEFAULT_AI_PROVIDER).strip().lower()
-    try:
-        return importlib.import_module("ai." + name)
-    except ImportError as exc:
-        raise AIConfigError("Unknown AI provider '%s'" % name) from exc
+    return mai_llm
 
 
 def limiter() -> RateLimiter:
@@ -52,7 +47,7 @@ def ask_json(system: str, prompt: str, schema: dict, attachments: Sequence[Attac
              max_output_tokens: int = 16384, cancelled: Callable[[], bool] | None = None) -> Any:
     prov = provider()
     if not prov.is_configured():
-        raise AIConfigError("No API key is configured")
+        raise AIConfigError("The mAI settings are missing (MAI_BASE_URL, MAI_ENDPOINT, or not running on Posit Connect)")
     return call_with_retries(
         lambda: prov.generate_json(system, prompt, schema, attachments=attachments, max_output_tokens=max_output_tokens),
         limiter(), cancelled)

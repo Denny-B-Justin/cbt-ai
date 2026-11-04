@@ -1,6 +1,8 @@
-"""Try the real AI with your own key. Not part of the automated tests (they never call the network).
+"""Try the real AI through the mAI gateway. Not part of the automated tests (they never call the network).
 
-    python tests/live_check.py                  quick check: key, one small call, reading and tagging a sample budget
+Run it on Posit Connect (for example from a Connect-hosted session): the gateway refuses local machines.
+
+    python tests/live_check.py                  quick check: settings, one small call, reading and tagging a sample budget
     python tests/live_check.py --full           also run a complete analysis of the sample (or of --file)
     python tests/live_check.py --file my.pdf    use your own document for the reading and tagging steps
     python tests/live_check.py --fake           run this script against the built-in stand-in (checks the script itself)
@@ -46,12 +48,12 @@ def fail(message: str) -> None:
 
 
 def check_key() -> bool:
-    t = step("API key")
+    t = step("mAI settings")
     if not client.is_configured():
-        fail("No key found. Copy .env.sample to .env and set GEMINI_API_KEY.")
+        fail("Set MAI_BASE_URL and MAI_ENDPOINT, and run this on Posit Connect (CONNECT_CONTENT_GUID is missing otherwise).")
         return False
     prov = client.provider()
-    done(t, "provider={} model={}".format(prov.__name__.split(".")[-1], prov.model_name()))
+    done(t, "provider={} model={}".format(prov.family(), prov.model_name()))
     return True
 
 

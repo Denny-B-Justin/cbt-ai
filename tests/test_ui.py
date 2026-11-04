@@ -271,7 +271,7 @@ def test_a_missing_key_is_explained_before_any_work(page, base, use_provider):
     go(page, base, "evaluate")
     drop(page, "#eval-upload", GREEN)
     page.wait_for_selector(".notice-error:has-text('not set up')", timeout=10_000)
-    assert provider.calls == [] and "access key" in page.inner_text(".notice-error")
+    assert provider.calls == [] and "set-up" in page.inner_text(".notice-error")
 
 
 def test_results_survive_going_to_another_page_and_back(page, base, fake_ai):

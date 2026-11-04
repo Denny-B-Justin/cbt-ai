@@ -17,7 +17,7 @@ outside the request.
 
 ## Settings
 
-Provide environment variables (see README). Put the key in the platform's secret store, not in the image. `.env` is read
+Provide environment variables (see README): `MAI_BASE_URL`, `MAI_ENDPOINT` and optionally `MAI_MODEL`, set in Posit Connect. No secrets are needed. `.env` is read
 only if present and is in `.gitignore`.
 
 ## Reverse proxy
@@ -37,7 +37,7 @@ only if present and is in `.gitignore`.
   machine for `MAX_RUNNING_ANALYSES` of those at once.
 - CPU is small; time is dominated by model calls. A 100-page budget needs on the order of 10–40 calls (reading sections
   plus tagging batches). At `AI_REQUESTS_PER_MINUTE=8` that is a few minutes; the loading bar says so.
-- The rate limiter is global. Ten visitors share the same requests-per-minute budget, so each waits longer. If your key has
+- The rate limiter is global. Ten visitors share the same requests-per-minute budget, so each waits longer. If the gateway allows
   more headroom, raise `AI_REQUESTS_PER_MINUTE` and `AI_PARALLEL_CALLS` together.
 
 ## Health and logs
@@ -49,8 +49,8 @@ only if present and is in `.gitignore`.
 
 ## Upgrading dependencies
 
-`requirements.txt` pins ranges, not exact versions. Before upgrading `dash`, `plotly` or `google-genai`, run `pytest` (the
-Gemini tests exercise the real SDK against a local server, so breaking SDK changes surface there) and
+`requirements.txt` pins ranges, not exact versions. Before upgrading `dash`, `plotly`, `google-genai` or `openai`, run `pytest` (the
+mAI tests exercise the real SDKs against a local server, so breaking SDK changes surface there) and
 `python tests/live_check.py`.
 
 ## If this becomes more than a demo

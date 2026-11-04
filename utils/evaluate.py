@@ -46,7 +46,7 @@ def read_upload(contents: str | None, filename: str | None) -> tuple[bytes | Non
 def not_ready_notice() -> html.Div | None:
     if client.is_configured():
         return None
-    return ui.notice("error", "The analysis service is not set up yet. Please ask the person who manages this tool to add its access key.",
+    return ui.notice("error", "The analysis service is not set up yet. Please ask the person who manages this tool to finish its set-up.",
                      "Not available")
 
 

@@ -1,4 +1,4 @@
-"""Shared fixtures. Every test runs with a fast rate limiter, a dummy key and an empty session store."""
+"""Shared fixtures. Every test runs with a fast rate limiter, dummy mAI settings and an empty session store."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ ROOT = Path(__file__).resolve().parent.parent
 SAMPLES = ROOT / "docs" / "samples"
 
 os.environ.setdefault("AI_REQUESTS_PER_MINUTE", "60000")
-os.environ.setdefault("GEMINI_API_KEY", "test-key")
 
 from ai import client  # noqa: E402
 from tests.fake_llm import FakeProvider  # noqa: E402
@@ -21,9 +20,11 @@ from utils import session  # noqa: E402
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.setenv("AI_REQUESTS_PER_MINUTE", "60000")
-    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
     monkeypatch.setenv("AI_PARALLEL_CALLS", "2")
-    monkeypatch.setenv("AI_PROVIDER", "gemini")
+    monkeypatch.setenv("MAI_BASE_URL", "http://127.0.0.1:9/posit-mai/conversationalai/")
+    monkeypatch.setenv("MAI_ENDPOINT", "https://azapimqa.example/maifactory/openai/responses")
+    monkeypatch.delenv("MAI_MODEL", raising=False)
+    monkeypatch.setenv("CONNECT_CONTENT_GUID", "test-app-guid")
     client._limiter = None
     session.clear_all()
     yield

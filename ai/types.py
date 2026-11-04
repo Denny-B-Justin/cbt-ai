@@ -44,12 +44,13 @@ class AIServerError(AIError):
 
 
 class AIResponseError(AIError):
-    """The answer was empty, blocked, cut off or not valid JSON."""
+    """The answer was empty, blocked, cut off or not valid JSON, or the request was too large for the model."""
 
-    def __init__(self, message: str = "", truncated: bool = False, blocked: bool = False):
+    def __init__(self, message: str = "", truncated: bool = False, blocked: bool = False, too_long: bool = False):
         super().__init__(message)
         self.truncated = truncated
         self.blocked = blocked
+        self.too_long = too_long
 
 
 @dataclass

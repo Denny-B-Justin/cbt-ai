@@ -1,4 +1,4 @@
-"""A stand-in for the AI provider, used by the tests. It follows the same interface as ai/gemini.py."""
+"""A stand-in for the AI provider, used by the tests. It follows the same interface as ai/mai_llm.py."""
 
 from __future__ import annotations
 
