@@ -1,15 +1,17 @@
-"""mAI provider, Claude models (World Bank gateway, Anthropic Messages API, Azure service-principal sign-in).
+"""mAI provider, Claude models (World Bank gateway to Amazon Bedrock's Converse API, Azure service-principal sign-in).
 
 Select it with AI_PROVIDER=mai-claude. Offers the same functions as ai/gemini.py.
+Each call is POST {MAI_CLAUDE_BASE_URL}/model/{MAI_LLM}/converse with the Azure token as a Bearer header.
 """
 
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import re
 import threading
-from typing import Any, Optional, Sequence
+from typing import Any, Sequence
 
 from utils import constants as C
 
@@ -19,9 +21,16 @@ from .types import AIConfigError, AIQuotaError, AIRateLimitError, AIResponseErro
 
 log = logging.getLogger(__name__)
 
+TOOL_NAME = "answer"
+DOC_FORMATS = {"application/pdf": "pdf", "text/csv": "csv", "text/plain": "txt", "text/html": "html",
+               "text/markdown": "md", "application/msword": "doc", "application/vnd.ms-excel": "xls",
+               "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx"}
+IMAGE_FORMATS = {"image/png": "png", "image/jpeg": "jpeg", "image/gif": "gif", "image/webp": "webp"}
+
 _client = None
-_client_key: Optional[tuple] = None
 _lock = threading.Lock()
+_forced_tool_ok = True
 
 
 def is_configured() -> bool:
@@ -33,87 +42,124 @@ def model_name() -> str:
 
 
 def _get_client():
-    global _client, _client_key
-    import anthropic
+    global _client
+    import httpx
 
-    token = mai.access_token()
-    # The SDK appends /v1/messages, so drop a trailing /v1 (MAI_BASE_URL usually has one for the OpenAI client).
-    url = re.sub(r"/v1/?$", "", mai.base_url(C.ENV_MAI_CLAUDE_BASE_URL))
-    key = (token, url, tuple(sorted(mai.headers().items())))
     with _lock:
-        if _client is None or _client_key != key:
-            # auth_token goes out as "Authorization: Bearer". max_retries=0: ai/ratelimit.py already paces and retries.
-            _client = anthropic.Anthropic(base_url=url, auth_token=token, default_headers=mai.headers(),
-                                          timeout=mai.TIMEOUT_S, max_retries=0)
-            _client_key = key
+        if _client is None:
+            _client = httpx.Client(timeout=mai.TIMEOUT_S)
         return _client
+
+
+def _url() -> str:
+    return "%s/model/%s/converse" % (mai.base_url(C.ENV_MAI_CLAUDE_BASE_URL).rstrip("/"), model_name())
 
 
 def _content(prompt: str, attachments: Sequence[Attachment]) -> list:
     parts = []
-    for a in attachments:
-        source = {"type": "base64", "media_type": a.mime_type, "data": base64.standard_b64encode(a.data).decode("ascii")}
-        parts.append({"type": "image" if a.mime_type.startswith("image/") else "document", "source": source})
-    parts.append({"type": "text", "text": prompt})
+    for i, a in enumerate(attachments):
+        data = base64.b64encode(a.data).decode("ascii")
+        if a.mime_type in IMAGE_FORMATS:
+            parts.append({"image": {"format": IMAGE_FORMATS[a.mime_type], "source": {"bytes": data}}})
+        else:
+            parts.append({"document": {"format": DOC_FORMATS.get(a.mime_type, "pdf"), "name": "attachment %d" % (i + 1),
+                                       "source": {"bytes": data}}})
+    parts.append({"text": prompt})
     return parts
+
+
+def _tool_config(schema: dict, forced: bool) -> dict:
+    spec = {"name": TOOL_NAME, "description": "Return the answer in exactly this JSON shape.",
+            "inputSchema": {"json": schema}}
+    return {"tools": [{"toolSpec": spec}], "toolChoice": {"tool": {"name": TOOL_NAME}} if forced else {"auto": {}}}
 
 
 def generate_json(system: str, prompt: str, schema: dict, attachments: Sequence[Attachment] = (),
                   max_output_tokens: int = 16384, temperature: float = 0.0) -> Any:
     """One attempt. Returns parsed JSON or raises one of the AI errors in ai/types.py.
 
-    temperature is accepted for interface compatibility; current Claude models reject sampling settings.
+    The JSON shape is enforced by making the model call one tool whose input schema is the task's schema.
     """
-    request = dict(
-        model=model_name(), system=system, max_tokens=max_output_tokens,
-        messages=[{"role": "user", "content": _content(prompt, attachments)}],
-        output_config={"format": {"type": "json_schema", "schema": mai.strict_schema(schema)}})
-    response = _call(request)
-    log.debug("mAI usage: %s", getattr(response, "usage", None))
-    return _parse(response)
-
-
-def _call(request: dict):
-    import anthropic
-
+    global _forced_tool_ok
+    payload = {
+        "system": [{"text": system + "\n\nAlways reply by calling the %s tool." % TOOL_NAME}],
+        "messages": [{"role": "user", "content": _content(prompt, attachments)}],
+        "inferenceConfig": {"maxTokens": max_output_tokens, "temperature": temperature},
+        "toolConfig": _tool_config(schema, _forced_tool_ok),
+    }
     try:
-        return _get_client().messages.create(**request)
-    except anthropic.RateLimitError as exc:
-        raise _map_rate_limit(exc) from exc
-    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError, anthropic.NotFoundError) as exc:
-        raise AIConfigError("mAI rejected the request (%s): %s" % (exc.status_code, _message(exc))) from exc
-    except anthropic.InternalServerError as exc:
-        raise AIServerError("mAI server error %s" % exc.status_code) from exc
-    except (anthropic.APITimeoutError, anthropic.APIConnectionError) as exc:
+        result = _call(payload)
+    except AIResponseError as exc:
+        # Newer Claude models reject a forced tool choice; let the model pick the tool itself instead.
+        if _forced_tool_ok and re.search(r"tool_?choice", str(exc), re.I):
+            log.warning("Model does not accept a forced tool choice; continuing with auto")
+            _forced_tool_ok = False
+            payload["toolConfig"] = _tool_config(schema, False)
+            result = _call(payload)
+        elif "temperature" in str(exc).lower() and "temperature" in payload["inferenceConfig"]:
+            payload["inferenceConfig"].pop("temperature")
+            result = _call(payload)
+        else:
+            raise
+    log.debug("mAI usage: %s", result.get("usage"))
+    return _parse(result)
+
+
+def _call(payload: dict) -> dict:
+    import httpx
+
+    headers = dict(mai.headers(), Authorization="Bearer " + mai.access_token())
+    try:
+        response = _get_client().post(_url(), json=payload, headers=headers)
+    except (httpx.TimeoutException, httpx.TransportError) as exc:
         raise AIServerError("Network problem talking to mAI: %s" % type(exc).__name__) from exc
-    except anthropic.APIStatusError as exc:
-        if exc.status_code in (408, 409) or exc.status_code >= 500:
-            raise AIServerError(_message(exc)) from exc
-        raise AIResponseError("mAI could not handle the request (%s): %s" % (exc.status_code, _message(exc))) from exc
-
-
-def _message(exc) -> str:
-    return " ".join(str(getattr(exc, "message", "") or exc).split())[:300]
-
-
-def _map_rate_limit(exc) -> Exception:
-    message = _message(exc)
-    if re.search(r"quota|per day|daily", message, re.I):
-        return AIQuotaError("Quota used up: " + message)
-    retry = None
-    headers = getattr(getattr(exc, "response", None), "headers", None) or {}
+    if response.status_code != 200:
+        raise _map_error(response)
     try:
-        retry = float(headers.get("retry-after")) if headers.get("retry-after") else None
+        return response.json()
+    except ValueError as exc:
+        raise AIServerError("mAI sent a reply that is not JSON") from exc
+
+
+def _error_message(response) -> str:
+    try:
+        body = response.json()
+        text = body.get("message") or body.get("Message") or body.get("error") or json.dumps(body)
     except ValueError:
-        pass
-    return AIRateLimitError(message, retry)
+        text = response.text
+    return " ".join(str(text).split())[:300]
 
 
-def _parse(response) -> Any:
-    reason = getattr(response, "stop_reason", "") or ""
+def _map_error(response) -> Exception:
+    code = response.status_code
+    message = _error_message(response)
+    if code == 429:
+        if re.search(r"quota|per day|daily", message, re.I):
+            return AIQuotaError("Quota used up: " + message)
+        try:
+            retry = float(response.headers["retry-after"])
+        except (KeyError, ValueError):
+            retry = None
+        return AIRateLimitError(message, retry)
+    if code in (401, 403, 404):
+        return AIConfigError("mAI rejected the request (%s): %s" % (code, message))
+    if code in (408, 409) or code >= 500:
+        return AIServerError("mAI server error %s: %s" % (code, message))
+    return AIResponseError("mAI could not handle the request (%s): %s" % (code, message))
+
+
+def _parse(result: dict) -> Any:
+    reason = result.get("stopReason") or ""
     if reason == "max_tokens":
         raise AIResponseError("The answer was cut off", truncated=True)
-    text = "".join(b.text for b in (getattr(response, "content", None) or []) if getattr(b, "type", "") == "text").strip()
+    content = ((result.get("output") or {}).get("message") or {}).get("content") or []
+    for block in content:
+        tool = block.get("toolUse")
+        if tool and tool.get("name") == TOOL_NAME:
+            data = tool.get("input")
+            return load_json(data) if isinstance(data, str) else data
+    text = "".join(block.get("text", "") for block in content).strip()
     if not text:
-        raise AIResponseError("Empty answer (%s)" % (reason or "no content"), blocked=reason == "refusal")
+        blocked = reason in ("content_filtered", "guardrail_intervened")
+        raise AIResponseError("Empty answer (%s)" % (reason or "no content"), blocked=blocked)
     return load_json(text)

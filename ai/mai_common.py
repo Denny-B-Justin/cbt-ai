@@ -26,7 +26,7 @@ def is_configured(base_url_env: str = C.ENV_MAI_BASE_URL) -> bool:
 
 
 def base_url(env: str = C.ENV_MAI_BASE_URL) -> str:
-    return (os.getenv(env) or os.getenv(C.ENV_MAI_BASE_URL) or "").strip()
+    return (os.getenv(env) or "").strip()
 
 
 def token_scope() -> str:
