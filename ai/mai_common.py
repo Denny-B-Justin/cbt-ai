@@ -5,14 +5,13 @@ from __future__ import annotations
 import copy
 import os
 import threading
-from typing import Optional
 
 from utils import constants as C
 
 TIMEOUT_S = 180.0
 
 _credential = None
-_credential_key: Optional[tuple] = None
+_credential_key: tuple | None = None
 _lock = threading.Lock()
 
 

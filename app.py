@@ -11,7 +11,8 @@ import json
 import logging
 import os
 import warnings
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 from urllib.parse import parse_qs
 
 try:
@@ -72,7 +73,7 @@ def serve_layout() -> html.Div:
 
 app.layout = serve_layout
 
-PAGE_BUILDERS: Dict[str, Callable[[str], Any]] = {
+PAGE_BUILDERS: dict[str, Callable[[str], Any]] = {
     C.PAGE_HOME: lambda sid: home.layout(),
     C.PAGE_EVALUATE: lambda sid: evaluate.layout(),
     C.PAGE_COMPARE: compare.layout,
@@ -95,12 +96,12 @@ def route(search: str, sid: str):
 
 
 app.clientside_callback(
-    """function(search) {
-        const titles = %s;
-        const page = new URLSearchParams(search || "").get("page") || %s;
-        document.title = titles[page] || %s;
+    """function(search) {{
+        const titles = {};
+        const page = new URLSearchParams(search || "").get("page") || {};
+        document.title = titles[page] || {};
         return "";
-    }""" % (json.dumps({key: "%s - %s" % (label, C.APP_NAME) for key, label, _ in C.PAGES}), json.dumps(C.DEFAULT_PAGE), json.dumps(C.APP_NAME)),
+    }}""".format(json.dumps({key: "{} - {}".format(label, C.APP_NAME) for key, label, _ in C.PAGES}), json.dumps(C.DEFAULT_PAGE), json.dumps(C.APP_NAME)),
     Output("title-sink", "children"), Input("url", "search"))
 
 

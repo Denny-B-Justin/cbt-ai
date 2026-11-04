@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List
 
 
 @dataclass
@@ -31,7 +30,7 @@ class RioResult:
 @dataclass
 class EUResult:
     tag: str                         # GREEN | BROWN | NEUTRAL
-    objectives: Dict[str, bool]
+    objectives: dict[str, bool]
     primary: str                     # objective key or "none"
     method: str
     rationale: str
@@ -42,7 +41,7 @@ class AIVerdict:
     """What the AI decided for one budget line."""
     rio_mitigation: int = 0
     rio_adaptation: int = 0
-    eu_objectives: List[str] = field(default_factory=list)
+    eu_objectives: list[str] = field(default_factory=list)
     brown: bool = False
     administrative: bool = False
     confidence: str = "MEDIUM"

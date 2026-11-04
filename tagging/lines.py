@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 KIND_PRIORITY = ["programme", "function", "ministry"]
 KIND_NAMES = {"programme": "programme and project lines", "function": "lines by function",
@@ -27,13 +27,13 @@ class Line:
     ministry: str = ""
     description: str = ""
     function_code: str = ""
-    amount: Optional[float] = None
+    amount: float | None = None
     kind: str = "programme"
     page: int = 0
     order: int = 0
 
     @property
-    def code_tokens(self) -> Tuple[str, ...]:
+    def code_tokens(self) -> tuple[str, ...]:
         """'05 01 00 00' and '05 01' are the same level of the code tree, so trailing zero parts are dropped."""
         tokens = [t for t in re.split(r"[^0-9A-Za-z]+", self.code.lower()) if t]
         while len(tokens) > 1 and set(tokens[-1]) == {"0"}:
@@ -48,13 +48,13 @@ class Line:
 
 @dataclass
 class Selection:
-    lines: List[Line]
-    stats: Dict[str, int] = field(default_factory=dict)
-    issues: List[Dict[str, str]] = field(default_factory=list)
+    lines: list[Line]
+    stats: dict[str, int] = field(default_factory=dict)
+    issues: list[dict[str, str]] = field(default_factory=list)
 
 
 # ── amounts and text ────────────────────────────────────────────────────────
-def parse_amount(raw: Any) -> Optional[float]:
+def parse_amount(raw: Any) -> float | None:
     """'1,234.5', '1.234,5', '(500)', '-12', 1200 -> numbers; anything unreadable -> None."""
     if raw is None or isinstance(raw, bool):
         return None
@@ -89,8 +89,8 @@ def _text(v: Any, limit: int = 400) -> str:
     return "" if s.lower() in _NULLS else s[:limit]
 
 
-def clean_records(records: List[Dict[str, Any]]) -> List[Line]:
-    out: List[Line] = []
+def clean_records(records: list[dict[str, Any]]) -> list[Line]:
+    out: list[Line] = []
     for i, r in enumerate(records):
         title, desc = _text(r.get("title"), 300), _text(r.get("description"), MAX_DESCRIPTION)
         if not title and desc:
@@ -115,7 +115,7 @@ def _norm(s: str) -> str:
 
 
 # ── selecting one consistent view ───────────────────────────────────────────
-def _merge_group(group: List[Line]) -> Line:
+def _merge_group(group: list[Line]) -> Line:
     best_kind = min((g.kind for g in group), key=lambda k: KIND_PRIORITY.index(k) if k in KIND_PRIORITY else 99)
     amounts = [g.amount for g in group if g.amount is not None]
     seen, desc = set(), []
@@ -134,20 +134,20 @@ def _merge_group(group: List[Line]) -> Line:
         page=min((g.page for g in group if g.page), default=first.page), order=min(g.order for g in group))
 
 
-def _merge_by_code(lines: List[Line]) -> Tuple[List[Line], int]:
-    groups: Dict[Tuple[str, ...], List[Line]] = {}
-    loose: List[Line] = []
+def _merge_by_code(lines: list[Line]) -> tuple[list[Line], int]:
+    groups: dict[tuple[str, ...], list[Line]] = {}
+    loose: list[Line] = []
     for ln in lines:
         (groups.setdefault(ln.code_tokens, []) if ln.specific_code else loose).append(ln)
     merged = [_merge_group(g) for g in groups.values()]
     return loose + merged, len(lines) - len(loose) - len(merged)
 
 
-def _is_prefix(a: Tuple[str, ...], b: Tuple[str, ...]) -> bool:
+def _is_prefix(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
     return len(a) < len(b) and b[:len(a)] == a
 
 
-def _hierarchy(lines: List[Line]) -> Tuple[List[Line], int, int]:
+def _hierarchy(lines: list[Line]) -> tuple[list[Line], int, int]:
     """Drop parent lines whose amount is the sum of coded children with amounts; fold description-only children
     into the nearest coded parent that has an amount."""
     coded = [ln for ln in lines if ln.specific_code]
@@ -155,7 +155,7 @@ def _hierarchy(lines: List[Line]) -> Tuple[List[Line], int, int]:
                  any(_is_prefix(p.code_tokens, c.code_tokens) and c.amount is not None for c in coded)}
     keep_parents = [p for p in coded if p.amount is not None and id(p) not in subtotals]
     folded_ids: set = set()
-    extra: Dict[int, List[str]] = {}
+    extra: dict[int, list[str]] = {}
     for c in coded:
         if c.amount is not None or id(c) in subtotals:
             continue
@@ -165,7 +165,7 @@ def _hierarchy(lines: List[Line]) -> Tuple[List[Line], int, int]:
             note = c.title + (": " + c.description if c.description else "")
             extra.setdefault(id(parent), []).append(note)
             folded_ids.add(id(c))
-    out: List[Line] = []
+    out: list[Line] = []
     for ln in lines:
         if id(ln) in subtotals or id(ln) in folded_ids:
             continue
@@ -176,7 +176,7 @@ def _hierarchy(lines: List[Line]) -> Tuple[List[Line], int, int]:
     return out, len(subtotals), len(folded_ids)
 
 
-def _dedupe(lines: List[Line]) -> Tuple[List[Line], int]:
+def _dedupe(lines: list[Line]) -> tuple[list[Line], int]:
     seen, out = set(), []
     for ln in lines:
         key = (_norm(ln.title), _norm(ln.ministry), ln.amount) if not ln.specific_code else (ln.code_tokens,)
@@ -187,7 +187,7 @@ def _dedupe(lines: List[Line]) -> Tuple[List[Line], int]:
     return out, len(lines) - len(out)
 
 
-def choose_view(lines: List[Line]) -> Tuple[List[Line], Optional[str]]:
+def choose_view(lines: list[Line]) -> tuple[list[Line], str | None]:
     """Keep one kind of line. Programmes are preferred, then functions, then ministries."""
     counts = {k: sum(1 for ln in lines if ln.kind == k) for k in KIND_PRIORITY}
     chosen = next((k for k in KIND_PRIORITY if counts[k] >= MIN_LINES_FOR_VIEW), None)
@@ -196,7 +196,7 @@ def choose_view(lines: List[Line]) -> Tuple[List[Line], Optional[str]]:
     return [ln for ln in lines if ln.kind == chosen], chosen
 
 
-def select_lines(records: List[Dict[str, Any]]) -> Selection:
+def select_lines(records: list[dict[str, Any]]) -> Selection:
     lines = clean_records(records)
     stats = {"found": len(lines)}
     kept = [ln for ln in lines if ln.kind not in DROPPED_KINDS]
@@ -216,7 +216,7 @@ def select_lines(records: List[Dict[str, Any]]) -> Selection:
     stats.update(merged_by_code=n_merged, other_views=other_kinds, subtotals=n_sub, folded=n_fold,
                  duplicates=n_dup, lines=len(view))
 
-    issues: List[Dict[str, str]] = []
+    issues: list[dict[str, str]] = []
     if chosen and other_kinds >= MIN_LINES_FOR_VIEW:
         issues.append({"level": "info", "message":
                        "The document shows the budget in more than one way. To avoid counting the same money twice, "

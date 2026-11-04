@@ -6,7 +6,7 @@ lowers confidence when it disagrees, or flags the line for a second look.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 from utils import constants as C
 
@@ -21,7 +21,7 @@ def _cap(conf: str, ceiling: str) -> str:
 
 def _note(ai_text: str, extra: str) -> str:
     ai_text = (ai_text or "").strip()
-    return ("%s %s" % (ai_text, extra)).strip() if ai_text else extra
+    return ("{} {}".format(ai_text, extra)).strip() if ai_text else extra
 
 
 def _objective_text(m: int, a: int) -> str:
@@ -30,7 +30,7 @@ def _objective_text(m: int, a: int) -> str:
     return "mitigation" if m else "adaptation" if a else "none"
 
 
-def combine_rio(ai: Optional[AIVerdict], rule: RioResult) -> Dict[str, Any]:
+def combine_rio(ai: AIVerdict | None, rule: RioResult) -> dict[str, Any]:
     if ai is None:
         return _rio_row(rule.mitigation, rule.adaptation, C.CONF_LOW, C.DECIDED_RULES,
                         "AI assessment unavailable. Keyword check: " + rule.rationale)
@@ -51,7 +51,7 @@ def combine_rio(ai: Optional[AIVerdict], rule: RioResult) -> Dict[str, Any]:
     return _rio_row(ai.rio_mitigation, ai.rio_adaptation, _cap(conf, C.CONF_MEDIUM), C.DECIDED_AI_ONLY, ai.rationale)
 
 
-def _rio_row(mitigation: int, adaptation: int, conf: str, decided: str, why: str) -> Dict[str, Any]:
+def _rio_row(mitigation: int, adaptation: int, conf: str, decided: str, why: str) -> dict[str, Any]:
     marker = max(mitigation, adaptation)
     return {
         "rio_marker": int(marker), "rio_mitigation": int(mitigation), "rio_adaptation": int(adaptation),
@@ -63,7 +63,7 @@ def _rio_row(mitigation: int, adaptation: int, conf: str, decided: str, why: str
     }
 
 
-def combine_eu(ai: Optional[AIVerdict], rule: EUResult) -> Dict[str, Any]:
+def combine_eu(ai: AIVerdict | None, rule: EUResult) -> dict[str, Any]:
     if ai is None:
         return _eu_row(rule.tag, [k for k in C.EU_OBJECTIVES if rule.objectives.get(k)], C.CONF_LOW, C.DECIDED_RULES,
                        "AI assessment unavailable. Keyword check: " + rule.rationale)
@@ -97,8 +97,8 @@ def combine_eu(ai: Optional[AIVerdict], rule: EUResult) -> Dict[str, Any]:
     return _eu_row(C.TAG_NEUTRAL, [], conf, decided, ai.rationale or rule.rationale)
 
 
-def _eu_row(tag: str, objectives: list, conf: str, decided: str, why: str) -> Dict[str, Any]:
-    row: Dict[str, Any] = {C.EU_FLAG_COLUMNS[k]: (k in objectives) for k in C.EU_OBJECTIVES}
+def _eu_row(tag: str, objectives: list, conf: str, decided: str, why: str) -> dict[str, Any]:
+    row: dict[str, Any] = {C.EU_FLAG_COLUMNS[k]: (k in objectives) for k in C.EU_OBJECTIVES}
     primary = objectives[0] if objectives else "none"
     row.update({
         "eu_primary_objective": primary, "climate_tag": tag, "confidence": conf, "tag_method": decided,

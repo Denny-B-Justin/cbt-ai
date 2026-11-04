@@ -59,7 +59,7 @@ def test_summary_sheet_matches_the_screen_numbers(analyses):
 
 def test_about_sheet_tells_people_to_review(analyses):
     a, _ = analyses
-    about = dict((r[0], r[1]) for r in sheet_rows(export.evaluation_workbook(a), "About")[1:])
+    about = {r[0]: r[1] for r in sheet_rows(export.evaluation_workbook(a), "About")[1:]}
     assert about["Country"] == "Testland" and "reviewed" in about["Note"] and about["Pages read"] == a.pages
 
 

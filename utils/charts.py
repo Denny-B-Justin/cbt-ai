@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Sequence, Tuple
+from collections.abc import Sequence
+from typing import Any
 
 import numpy as np
 import plotly.graph_objects as go
@@ -15,7 +16,7 @@ _AXIS_FONT = dict(family=C.FONT_STACK, size=12, color=C.INK_SOFT)
 _HOVER = dict(bgcolor="white", font_size=13, font_family=C.FONT_STACK, align="left", bordercolor=C.LINE)
 
 
-def _base_layout(fig: go.Figure, height: int = 320, margin: Optional[Dict[str, int]] = None, legend: bool = False) -> go.Figure:
+def _base_layout(fig: go.Figure, height: int = 320, margin: dict[str, int] | None = None, legend: bool = False) -> go.Figure:
     fig.update_layout(
         height=height, margin=margin or dict(l=8, r=16, t=8, b=8),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -36,7 +37,7 @@ def empty_figure(message: str = "No data to show", height: int = 240) -> go.Figu
     return _base_layout(fig, height)
 
 
-def fig_donut(slices: Sequence[Tuple[str, float, str]], unit: str = "amount", height: int = 300) -> go.Figure:
+def fig_donut(slices: Sequence[tuple[str, float, str]], unit: str = "amount", height: int = 300) -> go.Figure:
     """Donut of (label, value, colour) slices; every slice carries its name and share."""
     slices = [(l, float(v), c) for l, v, c in slices if not is_missing(v) and float(v) > 0]
     if not slices:
@@ -67,7 +68,7 @@ def fig_tag_donut(green: float, brown: float, unit: str = "amount", height: int 
 
 
 def fig_bar_h(labels: Sequence[str], values: Sequence[float], title: str = "", pct: bool = False,
-              color: str = C.INDIGO, height: Optional[int] = None) -> go.Figure:
+              color: str = C.INDIGO, height: int | None = None) -> go.Figure:
     """Horizontal single-series bars, largest on top, value written at the bar end."""
     labels, values = list(labels), [0.0 if is_missing(v) else float(v) for v in values]
     if not labels:
@@ -84,13 +85,13 @@ def fig_bar_h(labels: Sequence[str], values: Sequence[float], title: str = "", p
     return _base_layout(fig, height or max(150, 34 * len(labels) + 70), margin=dict(l=8, r=48, t=8, b=8))
 
 
-def fig_eu_objectives(summary: Dict[str, Any]) -> go.Figure:
+def fig_eu_objectives(summary: dict[str, Any]) -> go.Figure:
     shares = summary.get("objective_shares") or {}
     return fig_bar_h([C.EU_LABELS[k] for k in C.EU_OBJECTIVES], [shares.get(k) or 0.0 for k in C.EU_OBJECTIVES], pct=True,
                      title="Share of %s serving the objective (a line can serve several)" % summary.get("basis", "amount"))
 
 
-def fig_methods(counts: Dict[str, int], title: str = "Distinct classifications") -> go.Figure:
+def fig_methods(counts: dict[str, int], title: str = "Distinct classifications") -> go.Figure:
     if not counts:
         return empty_figure()
     items = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
@@ -98,7 +99,7 @@ def fig_methods(counts: Dict[str, int], title: str = "Distinct classifications")
 
 
 def fig_compare(labels: Sequence[str], a_values: Sequence[float], b_values: Sequence[float], title: str = "",
-                names: Tuple[str, str] = ("Budget A", "Budget B"), height: Optional[int] = None) -> go.Figure:
+                names: tuple[str, str] = ("Budget A", "Budget B"), height: int | None = None) -> go.Figure:
     """Two budgets side by side as grouped horizontal bars (shares 0..1)."""
     if not labels:
         return empty_figure()

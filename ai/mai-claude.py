@@ -11,7 +11,8 @@ import json
 import logging
 import re
 import threading
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from utils import constants as C
 
@@ -52,7 +53,7 @@ def _get_client():
 
 
 def _url() -> str:
-    return "%s/model/%s/converse" % (mai.base_url(C.ENV_MAI_CLAUDE_BASE_URL).rstrip("/"), model_name())
+    return "{}/model/{}/converse".format(mai.base_url(C.ENV_MAI_CLAUDE_BASE_URL).rstrip("/"), model_name())
 
 
 def _content(prompt: str, attachments: Sequence[Attachment]) -> list:
@@ -142,10 +143,10 @@ def _map_error(response) -> Exception:
             retry = None
         return AIRateLimitError(message, retry)
     if code in (401, 403, 404):
-        return AIConfigError("mAI rejected the request (%s): %s" % (code, message))
+        return AIConfigError("mAI rejected the request ({}): {}".format(code, message))
     if code in (408, 409) or code >= 500:
-        return AIServerError("mAI server error %s: %s" % (code, message))
-    return AIResponseError("mAI could not handle the request (%s): %s" % (code, message))
+        return AIServerError("mAI server error {}: {}".format(code, message))
+    return AIResponseError("mAI could not handle the request ({}): {}".format(code, message))
 
 
 def _parse(result: dict) -> Any:

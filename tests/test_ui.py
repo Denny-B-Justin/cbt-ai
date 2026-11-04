@@ -55,7 +55,7 @@ def page(browser):
 
 
 def go(page, base, name):
-    page.goto("%s/?page=%s" % (base, name))
+    page.goto("{}/?page={}".format(base, name))
     page.wait_for_selector(".page")
 
 
@@ -406,7 +406,7 @@ def test_two_visitors_never_see_each_other(browser, base, fake_ai):
 def test_the_session_routes_answer_quickly_and_ignore_nonsense(base):
     import urllib.request
     for route, body in (("ping", b"unknown"), ("end", b"unknown"), ("end", b"")):
-        req = urllib.request.Request("%s/_session/%s" % (base, route), data=body, method="POST")
+        req = urllib.request.Request("{}/_session/{}".format(base, route), data=body, method="POST")
         with urllib.request.urlopen(req, timeout=5) as r:
             assert r.status == 204
 
@@ -417,7 +417,7 @@ def test_the_ping_keeps_a_session_alive_and_end_removes_it(base):
     session.ensure(sid).last_seen -= 500
     before = session.get(sid).last_seen
     for route in ("ping", "end"):
-        urllib.request.urlopen(urllib.request.Request("%s/_session/%s" % (base, route), data=sid.encode(), method="POST"), timeout=5)
+        urllib.request.urlopen(urllib.request.Request("{}/_session/{}".format(base, route), data=sid.encode(), method="POST"), timeout=5)
         if route == "ping":
             assert session.get(sid).last_seen > before
     assert session.get(sid) is None
@@ -430,7 +430,7 @@ def test_no_technical_wording_on_any_page(page, base, name):
     page.wait_for_timeout(300)
     text = visible_text(page)
     hit = TECHNICAL_WORDS.search(text)
-    assert not hit, "%s: %s" % (name, hit and hit.group(0))
+    assert not hit, "{}: {}".format(name, hit and hit.group(0))
 
 
 def test_no_technical_wording_in_the_results(page, base, fake_ai):

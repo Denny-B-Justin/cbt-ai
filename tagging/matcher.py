@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable, Optional
+from collections.abc import Iterable
 
 
 class KeywordMatcher:
@@ -14,7 +14,7 @@ class KeywordMatcher:
         parts = [re.escape(w) for w in sorted(dict.fromkeys(forms), key=len, reverse=True)]
         self._re = re.compile(r"\b(" + "|".join(parts) + r")(?:s|es)?\b") if parts else None
 
-    def find(self, text: str) -> Optional[str]:
+    def find(self, text: str) -> str | None:
         if not self._re or not text:
             return None
         m = self._re.search(text.lower())

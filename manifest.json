@@ -6,46 +6,166 @@
     "entrypoint": "app.py"
   },
   "python": {
-    "version": "3.9.13",
+    "version": "3.12.12",
     "package_manager": {
       "name": "pip",
-      "version": "22.0.4",
+      "version": "25.2",
       "package_file": "requirements.txt"
     }
   },
   "files": {
     "requirements.txt": {
-      "checksum": "1aca663f9d883dc4eddc6a179f2e1308"
+      "checksum": "a9e9b3acbc669a3ea847c017c1ef2d1c"
     },
-    ".env": {
-      "checksum": "4aa6a68bcfcfc527b91dcb5339c04473"
-    },
-    ".env.example": {
-      "checksum": "ea87c04534354d0759210b120f68b6c1"
-    },
-    ".gitignore": {
-      "checksum": "2ef1298ab63e1ca4a3cace727c554405"
+    ".env.sample": {
+      "checksum": "1765362325f3b719f1e2e523997ef421"
     },
     "README.md": {
-      "checksum": "2629ddf74f8814e632f4cf51f8f26fc1"
+      "checksum": "71885b1e7721d71a905827fbf3747ada"
+    },
+    "ai/__init__.py": {
+      "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "ai/client.py": {
+      "checksum": "378630ce4a592772bcd538c5c70e1b86"
+    },
+    "ai/gemini.py": {
+      "checksum": "48f102845aa94b8497f11bf14d2b97c6"
+    },
+    "ai/mai-chatgpt.py": {
+      "checksum": "828b1e6b8610c64d71e7403d36bd141b"
+    },
+    "ai/mai-claude.py": {
+      "checksum": "3293c73e71178a2a352d3c9fa8a1a41f"
+    },
+    "ai/mai_common.py": {
+      "checksum": "940ec54486c07058659a8610dc24f322"
+    },
+    "ai/prompt.py": {
+      "checksum": "179f669c6a13729204f19f8373effdf5"
+    },
+    "ai/ratelimit.py": {
+      "checksum": "f0cc5c552b0888fa45b349c4fe25859e"
+    },
+    "ai/schemas.py": {
+      "checksum": "8b088158bb08559757eeef896d579552"
+    },
+    "ai/tasks.py": {
+      "checksum": "31027652a1c00b707bc68dff29abf8b8"
+    },
+    "ai/types.py": {
+      "checksum": "913b1e73a5afeaba36fcb033bb3dc465"
     },
     "app.py": {
-      "checksum": "e228cfc8f9e4cc1546e7ff5266449120"
+      "checksum": "26b76782bfc76d8f429eca2d2e9d20e7"
     },
-    "auth.py": {
-      "checksum": "e2e4998bb2bcfb50c15eba1ca1ad18b7"
+    "assets/The-World-Bank-group-white.png": {
+      "checksum": "596f6d13fdd22a2760464b4cc449ff24"
     },
-    "constants.py": {
-      "checksum": "887760006546606b7844946327ce32fc"
+    "assets/cbt_logo.svg": {
+      "checksum": "29744aa938a9c6776cf736c3bd97944f"
     },
-    "queries.py": {
-      "checksum": "13a6cffd600a712eb96c5245f1e9acba"
+    "assets/climate-finance.svg": {
+      "checksum": "15604e0d4993ed40ab7b848c4009de17"
     },
-    "server.py": {
-      "checksum": "9e54e325d4421d58221999eb13ce49f6"
+    "assets/favicon.ico": {
+      "checksum": "208caa611dacce0d65810a49efb1538f"
     },
-    "utils.py": {
-      "checksum": "f7b3702ed0246dc1c82ab50f03d09632"
+    "assets/fonts/FiraSans-OFL-LICENSE.txt": {
+      "checksum": "4538a5afdd18ccebd224405ffe3dee4b"
+    },
+    "assets/fonts/fira-sans-latin-300-normal.woff2": {
+      "checksum": "aeb66f4f2c7c6a47d3a4d92009525dc9"
+    },
+    "assets/fonts/fira-sans-latin-400-italic.woff2": {
+      "checksum": "022ce95a9787824d3ea819e104e5e3cc"
+    },
+    "assets/fonts/fira-sans-latin-400-normal.woff2": {
+      "checksum": "d26e1b11589f2c2744eadc0ac2ffae94"
+    },
+    "assets/fonts/fira-sans-latin-500-normal.woff2": {
+      "checksum": "9410bb8f89e52fc8df5f0aca7009947c"
+    },
+    "assets/fonts/fira-sans-latin-600-normal.woff2": {
+      "checksum": "beb3d7395726910999a3b89eb76e9a4b"
+    },
+    "assets/fonts/fira-sans-latin-700-normal.woff2": {
+      "checksum": "43eb5ca3942e0f74137d8754629fb9e6"
+    },
+    "assets/session.js": {
+      "checksum": "22dcc1327cdaab2eab1c33813339f885"
+    },
+    "assets/style.css": {
+      "checksum": "928c54fa7eb429cbd552520e5b9b2d78"
+    },
+    "tagging/__init__.py": {
+      "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "tagging/cofog.py": {
+      "checksum": "1407b25b036bd27a92fb4339470739d8"
+    },
+    "tagging/eu_tagger.py": {
+      "checksum": "c29e4b89308b7ba92de58ff687fbb166"
+    },
+    "tagging/keywords.py": {
+      "checksum": "9afa67cc431bdd9c2e869fe3bd485b11"
+    },
+    "tagging/lines.py": {
+      "checksum": "21c38f60740810ef92e6ae6f57a9e4ce"
+    },
+    "tagging/matcher.py": {
+      "checksum": "669a839b3420fe96112398b53116c2e6"
+    },
+    "tagging/metrics.py": {
+      "checksum": "d8b722111fb771e04edd162f3c130ff3"
+    },
+    "tagging/models.py": {
+      "checksum": "e09469fc28509957c7feb6dbdb061db6"
+    },
+    "tagging/pipeline.py": {
+      "checksum": "05c6af3e6335bf9ec7c8da052de8ca54"
+    },
+    "tagging/reconcile.py": {
+      "checksum": "62bb151345b3b18485b21cbc58acd5c8"
+    },
+    "tagging/rio_tagger.py": {
+      "checksum": "d0d79f5c2eafd940ae29c714cdf84d64"
+    },
+    "utils/__init__.py": {
+      "checksum": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "utils/charts.py": {
+      "checksum": "59d6fc57d78ac243460febbfb04bc8c4"
+    },
+    "utils/compare.py": {
+      "checksum": "5d1d602b309a38e2035a51b22a41dd1d"
+    },
+    "utils/components.py": {
+      "checksum": "81d04595b0414129676ea483428bb993"
+    },
+    "utils/constants.py": {
+      "checksum": "72fe7fc556f5b18fc65ed811f1bcad54"
+    },
+    "utils/documents.py": {
+      "checksum": "cc9a528b80574aff4afba78ad55ae2ed"
+    },
+    "utils/evaluate.py": {
+      "checksum": "d5ef02133c722f45cad58607b534955f"
+    },
+    "utils/export.py": {
+      "checksum": "1bd01bbb9822c3d334fc08f7d3404394"
+    },
+    "utils/formatting.py": {
+      "checksum": "49a3675c75d929c54bc70003b00e1eb0"
+    },
+    "utils/home.py": {
+      "checksum": "8fde1827e6a734b3fdb6cb78a90900ce"
+    },
+    "utils/methodology.py": {
+      "checksum": "7e76d48a18f29f7ce15299b1c7d934cb"
+    },
+    "utils/session.py": {
+      "checksum": "829524212962c79567cdfa700be94bcd"
     }
   }
 }

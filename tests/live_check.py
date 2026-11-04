@@ -37,7 +37,7 @@ def step(title: str):
 
 
 def done(started: float, note: str = "") -> None:
-    print("   ok  (%.1f s)  %s" % (time.time() - started, note))
+    print("   ok  ({:.1f} s)  {}".format(time.time() - started, note))
 
 
 def fail(message: str) -> None:
@@ -51,7 +51,7 @@ def check_key() -> bool:
         fail("No key found. Copy .env.sample to .env and set GEMINI_API_KEY.")
         return False
     prov = client.provider()
-    done(t, "provider=%s model=%s" % (prov.__name__.split(".")[-1], prov.model_name()))
+    done(t, "provider={} model={}".format(prov.__name__.split(".")[-1], prov.model_name()))
     return True
 
 
@@ -61,10 +61,10 @@ def check_small_call() -> bool:
     try:
         data = client.ask_json("Answer with JSON only.", "What is the capital of France?", schema, max_output_tokens=256)
     except AIError as exc:
-        fail("%s: %s" % (type(exc).__name__, exc))
+        fail("{}: {}".format(type(exc).__name__, exc))
         return False
     ok = isinstance(data, dict) and "paris" in str(data.get("capital", "")).lower()
-    done(t, repr(data)) if ok else fail("Unexpected answer: %r" % (data,))
+    done(t, repr(data)) if ok else fail("Unexpected answer: {!r}".format(data))
     return ok
 
 
@@ -75,10 +75,10 @@ def check_reading(path: Path):
         info = tasks.describe_document(doc)
         result = tasks.extract_budget_lines(doc, info, lambda stage, detail="": None)
     except (AIError, documents.DocumentError) as exc:
-        fail("%s: %s" % (type(exc).__name__, exc))
+        fail("{}: {}".format(type(exc).__name__, exc))
         return None
     done(t, "%d page(s), %d record(s), %d section(s)" % (doc.n_pages, len(result.records), result.sections))
-    print("   document: %s | %s | %s | %s %s" % (info.name, info.country, info.year, info.currency, info.unit))
+    print("   document: {} | {} | {} | {} {}".format(info.name, info.country, info.year, info.currency, info.unit))
     for r in result.records[:8]:
         print("   - %-40s %12s  [%s]" % (str(r.get("title"))[:40], r.get("amount"), r.get("kind")))
     if not result.records:
@@ -95,7 +95,7 @@ def check_tagging(result) -> None:
     try:
         verdicts = tasks.tag_budget_lines(items, lambda stage, detail="": None)
     except AIError as exc:
-        fail("%s: %s" % (type(exc).__name__, exc))
+        fail("{}: {}".format(type(exc).__name__, exc))
         return
     done(t, "%d of %d lines tagged" % (len(verdicts), len(items)))
     print("   %-38s %4s %4s  %-12s %s" % ("line", "mit", "adp", "EU", "why"))
@@ -113,22 +113,22 @@ def check_tagging(result) -> None:
 def check_full(path: Path) -> None:
     t = step("Complete analysis of %s" % path.name)
     try:
-        a = pipeline.analyse_document(path.read_bytes(), path.name, lambda stage, detail="": print("   ... %s %s" % (stage, detail), end="\r"))
+        a = pipeline.analyse_document(path.read_bytes(), path.name, lambda stage, detail="": print("   ... {} {}".format(stage, detail), end="\r"))
         print()
         b = pipeline.analyse_document((ROOT / "docs" / "samples" / "sample_budget_traditional.pdf").read_bytes(), "traditional.pdf",
                                       lambda stage, detail="": None) if path == SAMPLE else a
         comparison = pipeline.compare_budgets(a, b)
     except (pipeline.AnalysisError, AIError) as exc:
-        fail("%s: %s" % (type(exc).__name__, exc))
+        fail("{}: {}".format(type(exc).__name__, exc))
         return
     done(t, "%d lines, %s" % (a.stats["lines"], a.stats["rio_methods"]))
     r, e = a.rio_summary, a.eu_summary
-    print("   Rio weighted share %.1f%% | principal %.1f%% | significant %.1f%%" % (
+    print("   Rio weighted share {:.1f}% | principal {:.1f}% | significant {:.1f}%".format(
         100 * (r["weighted_share"] or 0), 100 * (r["principal_share"] or 0), 100 * (r["significant_share"] or 0)))
-    print("   EU green %.1f%% | brown %.1f%%" % (100 * (e["green_share"] or 0), 100 * (e["brown_share"] or 0)))
+    print("   EU green {:.1f}% | brown {:.1f}%".format(100 * (e["green_share"] or 0), 100 * (e["brown_share"] or 0)))
     for issue in a.issues:
         print("   note: %s" % issue["message"])
-    print("   scores A/B: %s / %s  (numbers alone: %s / %s)" % (
+    print("   scores A/B: {} / {}  (numbers alone: {} / {})".format(
         comparison.scores["A"], comparison.scores["B"], comparison.rubric["A"]["score"], comparison.rubric["B"]["score"]))
     print("   %s" % comparison.summary)
 

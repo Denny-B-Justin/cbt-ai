@@ -9,7 +9,8 @@ import base64
 import logging
 import re
 import threading
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from utils import constants as C
 
@@ -20,7 +21,7 @@ from .types import AIConfigError, AIQuotaError, AIRateLimitError, AIResponseErro
 log = logging.getLogger(__name__)
 
 _client = None
-_client_key: Optional[tuple] = None
+_client_key: tuple | None = None
 _lock = threading.Lock()
 
 
@@ -52,10 +53,10 @@ def _content(prompt: str, attachments: Sequence[Attachment]) -> list:
     for i, a in enumerate(attachments):
         data = base64.b64encode(a.data).decode("ascii")
         if a.mime_type.startswith("image/"):
-            parts.append({"type": "input_image", "image_url": "data:%s;base64,%s" % (a.mime_type, data)})
+            parts.append({"type": "input_image", "image_url": "data:{};base64,{}".format(a.mime_type, data)})
         else:
             parts.append({"type": "input_file", "filename": "attachment-%d.pdf" % (i + 1),
-                          "file_data": "data:%s;base64,%s" % (a.mime_type, data)})
+                          "file_data": "data:{};base64,{}".format(a.mime_type, data)})
     parts.append({"type": "input_text", "text": prompt})
     return parts
 
@@ -84,7 +85,7 @@ def _call(request: dict):
     except openai.RateLimitError as exc:
         raise _map_rate_limit(exc) from exc
     except (openai.AuthenticationError, openai.PermissionDeniedError, openai.NotFoundError) as exc:
-        raise AIConfigError("mAI rejected the request (%s): %s" % (exc.status_code, _message(exc))) from exc
+        raise AIConfigError("mAI rejected the request ({}): {}".format(exc.status_code, _message(exc))) from exc
     except openai.InternalServerError as exc:
         raise AIServerError("mAI server error %s" % exc.status_code) from exc
     except (openai.APITimeoutError, openai.APIConnectionError) as exc:
@@ -92,7 +93,7 @@ def _call(request: dict):
     except openai.APIStatusError as exc:
         if exc.status_code in (408, 409):
             raise AIServerError(_message(exc)) from exc
-        raise AIResponseError("mAI could not handle the request (%s): %s" % (exc.status_code, _message(exc))) from exc
+        raise AIResponseError("mAI could not handle the request ({}): {}".format(exc.status_code, _message(exc))) from exc
 
 
 def _message(exc) -> str:

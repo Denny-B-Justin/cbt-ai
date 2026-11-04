@@ -24,8 +24,8 @@ class RioMarkerTagger:
         if div:
             green = div == ENVIRONMENT_DIVISION
             m = 2 if green else 0
-            why = ("Function code %s (%s) is treated as a principal climate objective" % (div, division_name(div))
-                   if green else "Function code %s (%s) is typically climate-neutral" % (div, division_name(div)))
+            why = ("Function code {} ({}) is treated as a principal climate objective".format(div, division_name(div))
+                   if green else "Function code {} ({}) is typically climate-neutral".format(div, division_name(div)))
             return RioResult(m, m, 0, METHOD_PREDETERMINED, why)
 
         text = line.text
@@ -47,4 +47,4 @@ class RioMarkerTagger:
             what = "mitigation ('%s')" % mit
         else:
             what = "adaptation ('%s')" % ada
-        return RioResult(marker, mitigation, adaptation, METHOD_KEYWORDS, "%s %s objective" % (level, what))
+        return RioResult(marker, mitigation, adaptation, METHOD_KEYWORDS, "{} {} objective".format(level, what))

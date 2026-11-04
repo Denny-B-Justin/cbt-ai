@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 from datetime import datetime, timezone
-from typing import Any, List
+from typing import Any
 
 import pandas as pd
 
@@ -41,10 +41,10 @@ def display_frame(a: Analysis, kind: str) -> pd.DataFrame:
     return out
 
 
-def summary_rows(a: Analysis) -> List[List[Any]]:
+def summary_rows(a: Analysis) -> list[list[Any]]:
     r, e = a.rio_summary, a.eu_summary
     basis = "amount" if r["basis"] == "amount" else "number of lines"
-    rows: List[List[Any]] = [
+    rows: list[list[Any]] = [
         ["General", "Budget lines assessed", r["lines"]], ["General", "Shares are based on", basis],
         [C.KIND_LABELS[C.KIND_RIO], "Climate share (Principal counts 100%, Significant counts 40%)", fmt_pct(r["weighted_share"])],
         [C.KIND_LABELS[C.KIND_RIO], "Principal (2)", fmt_pct(r["principal_share"])],
@@ -69,7 +69,7 @@ def _fit(writer: pd.ExcelWriter) -> None:
             ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = min(max(10, width + 2), 60)
 
 
-def _about(a: Analysis) -> List[List[Any]]:
+def _about(a: Analysis) -> list[list[Any]]:
     return [["Document", a.name], ["Country", a.info.country or NO_VALUE], ["Year", a.info.year or NO_VALUE],
             ["Currency and unit", a.info.unit_text or NO_VALUE], ["Pages read", a.pages],
             ["Prepared on", datetime.now(timezone.utc).strftime("%d %b %Y")],
@@ -87,7 +87,7 @@ def evaluation_workbook(a: Analysis) -> bytes:
     return out.getvalue()
 
 
-def comparison_workbook(a: Analysis, b: Analysis, comparison: Comparison, rows: List[List[str]]) -> bytes:
+def comparison_workbook(a: Analysis, b: Analysis, comparison: Comparison, rows: list[list[str]]) -> bytes:
     out = io.BytesIO()
     with pd.ExcelWriter(out, engine="openpyxl") as xl:
         pd.DataFrame(rows, columns=["Measure", "Budget A: " + a.name, "Budget B: " + b.name]).to_excel(xl, sheet_name="Comparison", index=False)

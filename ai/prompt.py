@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Sequence
+from collections.abc import Sequence
 
 from .types import DocInfo
 
@@ -13,7 +13,7 @@ DESCRIBE_SYSTEM = "You identify what a government budget document is, from its f
 
 
 def describe_prompt(sample: str, filename: str) -> str:
-    return """File name: %s
+    return """File name: {}
 
 From the beginning of the document below, tell me:
 - name: a short descriptive title in English, for example "Georgia State Budget 2025" or "Kenya - Governance Support Project (P180287)"
@@ -24,8 +24,8 @@ From the beginning of the document below, tell me:
 - document_type: one of "national budget", "ministry budget", "project budget", "other"
 
 <document>
-%s
-</document>""" % (filename, sample)
+{}
+</document>""".format(filename, sample)
 
 
 # ── 2. Find the budget lines ────────────────────────────────────────────────
@@ -43,8 +43,8 @@ def extract_prompt(text: str, info: DocInfo, pages_label: str, attached: bool) -
     if info.unit_text:
         context.append("amounts are in %s" % info.unit_text)
     attach_note = "\nThe attached PDF contains these same pages." if attached else ""
-    return """%s
-Section: %s%s
+    return """{}
+Section: {}{}
 
 List every budget line in the section below.
 
@@ -65,16 +65,16 @@ For each line return
 
 Do not return revenue or tax items, borrowing, debt balances or ceilings, financing items, legal text, tables of contents or signatures.
 Never invent lines, codes or amounts. If a field is unknown return "" (page: the first page of the section).
-If the section has no budget lines return {"lines": []}.
+If the section has no budget lines return {{"lines": []}}.
 
 <document>
-%s
-</document>""" % (", ".join(context), pages_label, attach_note, text)
+{}
+</document>""".format(", ".join(context), pages_label, attach_note, text)
 
 
 # ── 3. Tag the lines ────────────────────────────────────────────────────────
 def _eu_examples() -> str:
-    return "\n".join("  %s - %s" % (k, v) for k, v in {
+    return "\n".join("  {} - {}".format(k, v) for k, v in {
         "mitigation": "reducing greenhouse-gas emissions: renewable energy, energy efficiency, clean public transport, cycling, rail, forests that store carbon",
         "adaptation": "reducing climate risks: flood protection, drought resilience, early warning, climate-proof infrastructure, coastal protection",
         "water": "water and marine resources: water and wastewater treatment, water quality, leak reduction, wetlands, sustainable fishing",
@@ -117,8 +117,8 @@ Examples
 """ % _eu_examples() + UNTRUSTED
 
 
-def tag_prompt(items: Sequence[Dict[str, str]]) -> str:
-    rows: List[str] = []
+def tag_prompt(items: Sequence[dict[str, str]]) -> str:
+    rows: list[str] = []
     for it in items:
         parts = ["Title: %s" % it["title"]]
         if it.get("ministry"):
@@ -127,7 +127,7 @@ def tag_prompt(items: Sequence[Dict[str, str]]) -> str:
             parts.append("Description: %s" % it["description"])
         if it.get("function_code"):
             parts.append("Function: %s" % it["function_code"])
-        rows.append("[%s] %s" % (it["id"], " | ".join(parts)))
+        rows.append("[{}] {}".format(it["id"], " | ".join(parts)))
     return "Tag each of these budget lines.\n\n<document>\n%s\n</document>" % "\n".join(rows)
 
 
@@ -147,15 +147,15 @@ Write each reason as one plain sentence (at most 30 words) without technical ter
 """ + UNTRUSTED
 
 
-def score_prompt(briefs: Sequence[Dict]) -> str:
+def score_prompt(briefs: Sequence[dict]) -> str:
     blocks = []
     for b in briefs:
-        lines = ["Budget %s: %s" % (b["label"], b["name"]),
+        lines = ["Budget {}: {}".format(b["label"], b["name"]),
                  "  budget lines assessed: %d (shares are by %s)" % (b["lines"], b["basis"]),
                  "  climate-weighted share: %s" % b["weighted_share"],
-                 "  principal share: %s; significant share: %s" % (b["principal_share"], b["significant_share"]),
-                 "  mitigation share: %s; adaptation share: %s" % (b["mitigation_share"], b["adaptation_share"]),
-                 "  EU green share: %s; brown share: %s" % (b["green_share"], b["brown_share"]),
+                 "  principal share: {}; significant share: {}".format(b["principal_share"], b["significant_share"]),
+                 "  mitigation share: {}; adaptation share: {}".format(b["mitigation_share"], b["adaptation_share"]),
+                 "  EU green share: {}; brown share: {}".format(b["green_share"], b["brown_share"]),
                  "  EU objectives served (share of budget): %s" % b["objectives"]]
         if b.get("top_green"):
             lines.append("  largest climate-relevant lines: %s" % "; ".join(b["top_green"]))

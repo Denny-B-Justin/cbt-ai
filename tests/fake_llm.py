@@ -5,7 +5,8 @@ from __future__ import annotations
 import re
 import threading
 import time
-from typing import Any, List, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from ai.types import Attachment
 from tagging.eu_tagger import EUTaxonomyTagger
@@ -21,7 +22,7 @@ class FakeProvider:
 
     def __init__(self, fail_first: int = 0, error: Exception = None, delay: float = 0.0):
         self.delay = delay
-        self.calls: List[dict] = []
+        self.calls: list[dict] = []
         self.lock = threading.Lock()
         self.fail_first = fail_first
         self.error = error

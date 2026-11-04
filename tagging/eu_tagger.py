@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Dict
 
 from utils import constants as C
 
@@ -18,7 +17,7 @@ METHOD_OBJECTIVES = "EU_TAXONOMY"
 METHOD_NONE = "EU_TAXONOMY_NONE"
 
 
-def _no_objectives() -> Dict[str, bool]:
+def _no_objectives() -> dict[str, bool]:
     return {k: False for k in C.EU_OBJECTIVES}
 
 
@@ -37,7 +36,7 @@ class EUTaxonomyTagger:
                 return EUResult(C.TAG_GREEN, obj, "mitigation", METHOD_PREDETERMINED,
                                 "Function code 05 (Environmental protection) is treated as aligned")
             return EUResult(C.TAG_NEUTRAL, _no_objectives(), "none", METHOD_PREDETERMINED,
-                            "Function code %s (%s) is outside the EU environmental objectives" % (div, division_name(div)))
+                            "Function code {} ({}) is outside the EU environmental objectives".format(div, division_name(div)))
 
         text = line.text
         hit = self.exclusion.find(text)
@@ -55,7 +54,7 @@ class EUTaxonomyTagger:
             return EUResult(C.TAG_NEUTRAL, _no_objectives(), "none", METHOD_NONE,
                             "No EU environmental objective detected")
         primary = active[0]
-        why = "Serves %s ('%s')" % (C.EU_LABELS[primary].lower(), matches[primary])
+        why = "Serves {} ('{}')".format(C.EU_LABELS[primary].lower(), matches[primary])
         if len(active) > 1:
             why += "; also " + ", ".join(C.EU_LABELS[k].lower() for k in active[1:])
         return EUResult(C.TAG_GREEN, {k: bool(matches[k]) for k in C.EU_OBJECTIVES}, primary, METHOD_OBJECTIVES, why)

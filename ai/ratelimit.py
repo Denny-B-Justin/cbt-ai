@@ -5,7 +5,8 @@ from __future__ import annotations
 import random
 import threading
 import time
-from typing import Callable, Optional, TypeVar
+from collections.abc import Callable
+from typing import TypeVar
 
 from .types import AIRateLimitError, AIServerError, Cancelled
 
@@ -13,7 +14,7 @@ T = TypeVar("T")
 MAX_ATTEMPTS = 6
 
 
-def _sleep(seconds: float, cancelled: Optional[Callable[[], bool]] = None) -> None:
+def _sleep(seconds: float, cancelled: Callable[[], bool] | None = None) -> None:
     end = time.monotonic() + seconds
     while True:
         if cancelled and cancelled():
@@ -33,7 +34,7 @@ class RateLimiter:
         self._next = 0.0
         self._lock = threading.Lock()
 
-    def wait(self, cancelled: Optional[Callable[[], bool]] = None) -> None:
+    def wait(self, cancelled: Callable[[], bool] | None = None) -> None:
         with self._lock:
             now = time.monotonic()
             start = max(now, self._next)
@@ -50,7 +51,7 @@ class RateLimiter:
             self.penalty = max(1.0, self.penalty * 0.9)
 
 
-def call_with_retries(fn: Callable[[], T], limiter: RateLimiter, cancelled: Optional[Callable[[], bool]] = None) -> T:
+def call_with_retries(fn: Callable[[], T], limiter: RateLimiter, cancelled: Callable[[], bool] | None = None) -> T:
     attempt = 0
     while True:
         attempt += 1

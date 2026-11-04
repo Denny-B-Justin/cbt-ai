@@ -24,7 +24,7 @@ chart value and table is computed in Python from those judgements.
 
 ## Quick start
 
-Python 3.10 or newer (developed and tested on 3.13).
+Python 3.12 (targets 3.12.12, the version pinned in `manifest.json`).
 
 ```bash
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate

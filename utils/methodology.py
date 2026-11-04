@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from dash import html
 
@@ -47,7 +48,7 @@ def _swatch(colour: str) -> html.Span:
     return html.Span(className="swatch", style={"background": colour})
 
 
-def _body() -> List[Any]:
+def _body() -> list[Any]:
     w = C.RIO_WEIGHTS
     significant = int(round(w[1] * 100))
     objectives = [html.Li([html.Strong(C.EU_LABELS[k]), " - " + text]) for k, text in [

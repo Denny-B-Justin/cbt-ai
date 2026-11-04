@@ -6,7 +6,7 @@ import base64
 import binascii
 import logging
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 from dash import Input, Output, State, callback, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
@@ -26,7 +26,7 @@ STEPS = [("Upload", "your budget document"), ("Wait", "while we read and tag it"
 
 
 # ── shared helpers (also used by the compare page) ──────────────────────────
-def read_upload(contents: Optional[str], filename: Optional[str]) -> Tuple[Optional[bytes], Optional[html.Div]]:
+def read_upload(contents: str | None, filename: str | None) -> tuple[bytes | None, html.Div | None]:
     """Decode a dcc.Upload payload. Returns (bytes, None) or (None, error notice)."""
     if not contents or not filename:
         return None, None
@@ -43,7 +43,7 @@ def read_upload(contents: Optional[str], filename: Optional[str]) -> Tuple[Optio
     return data, None
 
 
-def not_ready_notice() -> Optional[html.Div]:
+def not_ready_notice() -> html.Div | None:
     if client.is_configured():
         return None
     return ui.notice("error", "The analysis service is not set up yet. Please ask the person who manages this tool to add its access key.",
@@ -54,7 +54,7 @@ def loader_for(job: session.Job, hint: str = LOADER_HINT) -> html.Div:
     return ui.loader(job.stage, job.detail, hint)
 
 
-def job_notice(job: session.Job) -> Optional[html.Div]:
+def job_notice(job: session.Job) -> html.Div | None:
     if job.state == session.FAILED:
         return ui.notice("error", job.error, "We could not finish the analysis")
     if job.state == session.CANCELLED:
@@ -66,7 +66,7 @@ def money(a: Analysis, value: Any) -> str:
     return fmt_money(value, a.info.currency, a.info.unit)
 
 
-def basis_text(summary: Dict[str, Any]) -> str:
+def basis_text(summary: dict[str, Any]) -> str:
     return "of amount" if summary["basis"] == "amount" else "of lines"
 
 
@@ -175,7 +175,7 @@ def _work(data: bytes, filename: str) -> session.Work:
 @callback(Output("eval-message", "children"), Output("eval-job", "data"),
           Input("eval-upload", "contents"), Input("eval-cancel", "n_clicks"),
           State("eval-upload", "filename"), State("session", "data"), prevent_initial_call=True)
-def start_or_stop(contents: Optional[str], _cancel: int, filename: Optional[str], sid: str):
+def start_or_stop(contents: str | None, _cancel: int, filename: str | None, sid: str):
     if ctx.triggered_id == "eval-cancel":
         session.cancel_job(sid, SLOT)
         return ui.token(), {"t": time.time()}

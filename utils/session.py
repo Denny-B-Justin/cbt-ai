@@ -10,7 +10,8 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Any
 
 from ai.types import AIError, Cancelled
 from tagging.pipeline import AnalysisError
@@ -66,13 +67,13 @@ class Upload:
 class Session:
     id: str
     last_seen: float = field(default_factory=time.time)
-    jobs: Dict[str, Job] = field(default_factory=dict)
-    uploads: Dict[str, Upload] = field(default_factory=dict)
+    jobs: dict[str, Job] = field(default_factory=dict)
+    uploads: dict[str, Upload] = field(default_factory=dict)
 
 
-_sessions: Dict[str, Session] = {}
+_sessions: dict[str, Session] = {}
 _lock = threading.RLock()
-_sweeper: Optional[threading.Thread] = None
+_sweeper: threading.Thread | None = None
 
 
 def new_id() -> str:
@@ -106,7 +107,7 @@ def _stop_jobs(session: Session) -> None:
 
 
 # ── sessions ────────────────────────────────────────────────────────────────
-def get(sid: Optional[str]) -> Optional[Session]:
+def get(sid: str | None) -> Session | None:
     with _lock:
         return _sessions.get(sid) if sid else None
 
@@ -121,7 +122,7 @@ def ensure(sid: str) -> Session:
         return session
 
 
-def touch(sid: Optional[str]) -> bool:
+def touch(sid: str | None) -> bool:
     with _lock:
         session = _sessions.get(sid) if sid else None
         if session:
@@ -129,7 +130,7 @@ def touch(sid: Optional[str]) -> bool:
         return session is not None
 
 
-def end(sid: Optional[str]) -> bool:
+def end(sid: str | None) -> bool:
     """Remove a visitor's session and everything in it."""
     with _lock:
         session = _sessions.pop(sid, None) if sid else None
@@ -139,7 +140,7 @@ def end(sid: Optional[str]) -> bool:
     return session is not None
 
 
-def sweep(now: Optional[float] = None, limit: Optional[float] = None) -> int:
+def sweep(now: float | None = None, limit: float | None = None) -> int:
     now = time.time() if now is None else now
     limit = idle_seconds() if limit is None else limit
     with _lock:
@@ -165,12 +166,12 @@ def set_upload(sid: str, key: str, name: str, data: bytes) -> None:
     ensure(sid).uploads[key] = Upload(name, data)
 
 
-def get_upload(sid: Optional[str], key: str) -> Optional[Upload]:
+def get_upload(sid: str | None, key: str) -> Upload | None:
     session = get(sid)
     return session.uploads.get(key) if session else None
 
 
-def drop_upload(sid: Optional[str], key: str) -> None:
+def drop_upload(sid: str | None, key: str) -> None:
     session = get(sid)
     if session:
         session.uploads.pop(key, None)
@@ -182,7 +183,7 @@ def running_jobs() -> int:
         return sum(1 for s in _sessions.values() for j in s.jobs.values() if j.state == RUNNING)
 
 
-def current_job(sid: Optional[str], slot: str) -> Optional[Job]:
+def current_job(sid: str | None, slot: str) -> Job | None:
     session = get(sid)
     return session.jobs.get(slot) if session else None
 
@@ -222,14 +223,14 @@ def start_job(sid: str, slot: str, work: Work) -> Job:
     return job
 
 
-def cancel_job(sid: Optional[str], slot: str) -> None:
+def cancel_job(sid: str | None, slot: str) -> None:
     job = current_job(sid, slot)
     if job and job.state == RUNNING:
         job.stop.set()
         job.state, job.finished = CANCELLED, time.time()
 
 
-def forget_job(sid: Optional[str], slot: str) -> None:
+def forget_job(sid: str | None, slot: str) -> None:
     session = get(sid)
     if session:
         job = session.jobs.pop(slot, None)

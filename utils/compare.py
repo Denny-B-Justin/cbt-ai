@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from dash import Input, Output, State, callback, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
@@ -75,24 +75,24 @@ def layout(sid: str) -> html.Div:
 
 
 # ── the table ───────────────────────────────────────────────────────────────
-def _better(a: Optional[float], b: Optional[float], higher: bool = True) -> str:
+def _better(a: float | None, b: float | None, higher: bool = True) -> str:
     if a is None or b is None or round(a, 3) == round(b, 3):
         return ""
     return "A" if (a > b) == higher else "B"
 
 
-def _objectives(s: Dict[str, Any]) -> tuple:
+def _objectives(s: dict[str, Any]) -> tuple:
     shares = {k: v for k, v in (s.get("objective_shares") or {}).items() if (v or 0) >= 0.01}
     names = [C.EU_LABELS[k] for k in sorted(shares, key=shares.get, reverse=True)]
     return len(shares), ", ".join(names[:3]) + (" …" if len(names) > 3 else "")
 
 
-def build_rows(a: Analysis, b: Analysis) -> List[Row]:
+def build_rows(a: Analysis, b: Analysis) -> list[Row]:
     ra, rb, ea, eb = a.rio_summary, b.rio_summary, a.eu_summary, b.eu_summary
     na, sa = _objectives(ea)
     nb, sb = _objectives(eb)
 
-    def pct(label: str, key: str, x: Dict[str, Any], y: Dict[str, Any], higher: Optional[bool] = None) -> Row:
+    def pct(label: str, key: str, x: dict[str, Any], y: dict[str, Any], higher: bool | None = None) -> Row:
         return Row(label, fmt_pct(x[key]), fmt_pct(y[key]), _better(x[key], y[key], higher) if higher is not None else "")
 
     return [
@@ -124,8 +124,8 @@ def _cell(text: str, sub: str, better: bool) -> html.Td:
     return html.Td(className="is-better" if better else "", children=[text, html.Span(sub, className="cell-sub") if sub else None])
 
 
-def compare_table(a: Analysis, b: Analysis, comparison: Comparison, rows: List[Row]) -> html.Div:
-    body: List[Any] = []
+def compare_table(a: Analysis, b: Analysis, comparison: Comparison, rows: list[Row]) -> html.Div:
+    body: list[Any] = []
     for r in rows:
         if r.group:
             body.append(html.Tr(className="group", children=html.Th(r.label, colSpan=3)))
@@ -141,17 +141,17 @@ def compare_table(a: Analysis, b: Analysis, comparison: Comparison, rows: List[R
         html.Thead(html.Tr([html.Th("Measure"), _head("A", a), _head("B", b)])), html.Tbody(body)]))
 
 
-def text_rows(rows: List[Row], comparison: Comparison) -> List[List[str]]:
+def text_rows(rows: list[Row], comparison: Comparison) -> list[list[str]]:
     out = [[r.label, r.a, r.b] for r in rows if not r.group]
     out.append(["Overall climate score (out of 100)", str(comparison.scores["A"]), str(comparison.scores["B"])])
     return out
 
 
 # ── results ─────────────────────────────────────────────────────────────────
-def results_view(result: Dict[str, Any]) -> html.Div:
+def results_view(result: dict[str, Any]) -> html.Div:
     a, b, comparison = result["A"], result["B"], result["comparison"]
     rows = build_rows(a, b)
-    notes = [ui.notice("warn" if i["level"] == "warn" else "info", "Budget %s: %s" % (k, i["message"]))
+    notes = [ui.notice("warn" if i["level"] == "warn" else "info", "Budget {}: {}".format(k, i["message"]))
              for k, x in (("A", a), ("B", b)) for i in x.issues]
     if a.rio_summary["basis"] != b.rio_summary["basis"]:
         notes.append(ui.notice("warn", "One budget has amounts and the other does not, so its shares are based on the number of budget lines. "
@@ -165,7 +165,7 @@ def results_view(result: Dict[str, Any]) -> html.Div:
     return html.Div(className="results", children=[
         html.Div(className="result-head", children=[
             html.Div([html.H3("Budget A and Budget B side by side", className="result-title"),
-                      html.Div("%s and %s" % (a.name, b.name), className="muted")]),
+                      html.Div("{} and {}".format(a.name, b.name), className="muted")]),
             html.Button("Download comparison (.xlsx)", id="compare-download-btn", n_clicks=0, className="btn btn-outline")]),
         *notes,
         ui.notice("info", comparison.summary, "In short") if comparison.summary else None,
@@ -184,7 +184,7 @@ def results_view(result: Dict[str, Any]) -> html.Div:
 def _register_upload(key: str) -> None:
     @callback(Output("compare-file-" + key.lower(), "children"), Input("compare-upload-" + key.lower(), "contents"),
               State("compare-upload-" + key.lower(), "filename"), State("session", "data"), prevent_initial_call=True)
-    def keep_file(contents: Optional[str], name: Optional[str], sid: str):
+    def keep_file(contents: str | None, name: str | None, sid: str):
         if not contents:
             raise PreventUpdate
         data, error = read_upload(contents, name)
@@ -199,16 +199,16 @@ for _key in KEYS:
     _register_upload(_key)
 
 
-def _work(files: Dict[str, session.Upload]) -> session.Work:
+def _work(files: dict[str, session.Upload]) -> session.Work:
     def run(progress, cancelled):
-        analyses: Dict[str, Analysis] = {}
+        analyses: dict[str, Analysis] = {}
         for key in KEYS:
             def step(stage: str, detail: str = "", key: str = key) -> None:
-                progress(stage, "Budget %s%s" % (key, " · " + detail if detail else ""))
+                progress(stage, "Budget {}{}".format(key, " · " + detail if detail else ""))
             try:
                 analyses[key] = analyse_document(files[key].data, files[key].name, step, cancelled)
             except AnalysisError as exc:
-                raise AnalysisError("Budget %s: %s" % (key, exc)) from exc
+                raise AnalysisError("Budget {}: {}".format(key, exc)) from exc
         progress(C.STAGE_SCORE)
         return {"A": analyses["A"], "B": analyses["B"], "comparison": compare_budgets(analyses["A"], analyses["B"], cancelled)}
     return run

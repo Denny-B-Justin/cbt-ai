@@ -7,7 +7,8 @@ import logging
 import os
 import re
 import threading
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from utils import constants as C
 
@@ -21,7 +22,7 @@ ENV_THINKING = "GEMINI_THINKING_LEVEL"
 TIMEOUT_MS = 180_000
 
 _client = None
-_client_key: Optional[str] = None
+_client_key: str | None = None
 _lock = threading.Lock()
 _thinking_ok = True
 
@@ -101,7 +102,7 @@ def _call(parts, config):
         raise AIServerError("Network problem talking to Gemini: %s" % type(exc).__name__) from exc
 
 
-def _retry_seconds(details: Any) -> Optional[float]:
+def _retry_seconds(details: Any) -> float | None:
     text = json.dumps(details, default=str) if details is not None else ""
     m = re.search(r'"retryDelay"\s*:\s*"([\d.]+)s"', text) or re.search(r"retry in ([\d.]+)\s*s", text, re.I)
     return float(m.group(1)) if m else None
@@ -117,10 +118,10 @@ def _map_client_error(exc) -> Exception:
             return AIQuotaError("Daily quota used up: " + message)
         return AIRateLimitError(message, _retry_seconds(details))
     if code in (401, 403, 404) or (code == 400 and re.search(r"api key|API_KEY|not found|permission", message, re.I)):
-        return AIConfigError("Gemini rejected the request (%s): %s" % (code, message))
+        return AIConfigError("Gemini rejected the request ({}): {}".format(code, message))
     if code in (408, 409):
         return AIServerError(message)
-    return AIResponseError("Gemini could not handle the request (%s): %s" % (code, message))
+    return AIResponseError("Gemini could not handle the request ({}): {}".format(code, message))
 
 
 def _parse(response) -> Any:

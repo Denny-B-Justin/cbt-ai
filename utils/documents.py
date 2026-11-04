@@ -8,7 +8,6 @@ import unicodedata
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
 
 from . import constants as C
 
@@ -37,7 +36,7 @@ class Chunk:
     first_page: int
     last_page: int
     text: str
-    pdf_slice: Optional[bytes] = None
+    pdf_slice: bytes | None = None
 
     @property
     def label(self) -> str:
@@ -48,9 +47,9 @@ class Chunk:
 class Document:
     filename: str
     kind: str                                  # "pdf" | "docx"
-    pages: List[Page]
-    pdf_bytes: Optional[bytes] = None
-    notes: List[str] = field(default_factory=list)
+    pages: list[Page]
+    pdf_bytes: bytes | None = None
+    notes: list[str] = field(default_factory=list)
 
     @property
     def n_pages(self) -> int:
@@ -82,7 +81,7 @@ def clean_text(raw: str) -> str:
     return "\n".join(lines)
 
 
-def _drop_repeated_lines(pages: List[Page]) -> None:
+def _drop_repeated_lines(pages: list[Page]) -> None:
     """Remove running headers and footers that repeat on most pages."""
     if len(pages) < 5:
         return
@@ -145,11 +144,11 @@ def _read_pdf(data: bytes, filename: str) -> Document:
     return Document(filename=filename, kind="pdf", pages=pages, pdf_bytes=data)
 
 
-def _docx_blocks(doc) -> List[str]:
+def _docx_blocks(doc) -> list[str]:
     from docx.table import Table
     from docx.text.paragraph import Paragraph
 
-    blocks: List[str] = []
+    blocks: list[str] = []
     for child in doc.element.body.iterchildren():
         tag = child.tag.rsplit("}", 1)[-1]
         if tag == "p":
@@ -158,7 +157,7 @@ def _docx_blocks(doc) -> List[str]:
                 blocks.append(text)
         elif tag == "tbl":
             for row in Table(child, doc).rows:
-                cells: List[str] = []
+                cells: list[str] = []
                 for cell in row.cells:
                     t = " ".join(cell.text.split())
                     if not cells or cells[-1] != t:       # merged cells repeat; keep one copy
@@ -175,8 +174,8 @@ def _read_docx(data: bytes, filename: str) -> Document:
         doc = docx.Document(io.BytesIO(data))
     except Exception as exc:
         raise DocumentError("We could not open this Word file. Please save it as .docx or upload a PDF.") from exc
-    pages: List[Page] = []
-    buf: List[str] = []
+    pages: list[Page] = []
+    buf: list[str] = []
     size = 0
     for block in (clean_text(b) for b in _docx_blocks(doc)):
         if size + len(block) > DOCX_PAGE_CHARS and buf:
@@ -194,7 +193,7 @@ def _read_docx(data: bytes, filename: str) -> Document:
     return Document(filename=filename, kind="docx", pages=pages)
 
 
-def _pdf_slice(pdf_bytes: bytes, first: int, last: int) -> Optional[bytes]:
+def _pdf_slice(pdf_bytes: bytes, first: int, last: int) -> bytes | None:
     import pymupdf
 
     src = pymupdf.open(stream=pdf_bytes, filetype="pdf")
@@ -214,7 +213,7 @@ def _page_weight(p: Page) -> int:
     return len(p.text) * (2 if p.table_like else 1) + 200
 
 
-def _with_slices(doc: Document, group: List[Page]) -> List[tuple]:
+def _with_slices(doc: Document, group: list[Page]) -> list[tuple]:
     """Pair a group of pages with the PDF pages to attach (table and scanned pages are also shown to the AI as pages).
     A group of scanned pages whose picture is too large to attach is cut in two."""
     if not (doc.kind == "pdf" and doc.pdf_bytes and any(p.table_like or p.scanned for p in group)):
@@ -226,10 +225,10 @@ def _with_slices(doc: Document, group: List[Page]) -> List[tuple]:
     return _with_slices(doc, group[:mid]) + _with_slices(doc, group[mid:])
 
 
-def make_chunks(doc: Document, max_chars: int = C.CHUNK_CHARS) -> List[Chunk]:
+def make_chunks(doc: Document, max_chars: int = C.CHUNK_CHARS) -> list[Chunk]:
     """Group consecutive pages into sections. Table pages weigh double: they produce many rows."""
-    groups: List[List[Page]] = []
-    cur: List[Page] = []
+    groups: list[list[Page]] = []
+    cur: list[Page] = []
     weight = 0
     for p in doc.pages:
         w = _page_weight(p)
@@ -241,14 +240,14 @@ def make_chunks(doc: Document, max_chars: int = C.CHUNK_CHARS) -> List[Chunk]:
     if cur:
         groups.append(cur)
 
-    chunks: List[Chunk] = []
+    chunks: list[Chunk] = []
     for g, piece in (pair for group in groups for pair in _with_slices(doc, group)):
         text = "\n".join("[Page %d]\n%s" % (p.number, p.text) for p in g)
         chunks.append(Chunk(len(chunks) + 1, g[0].number, g[-1].number, text, piece))
     return chunks
 
 
-def split_chunk(chunk: Chunk, doc: Document) -> List[Chunk]:
+def split_chunk(chunk: Chunk, doc: Document) -> list[Chunk]:
     """Cut a section in two (used when the AI answer was too long). Returns [] if it cannot be split."""
     pages = [p for p in doc.pages if chunk.first_page <= p.number <= chunk.last_page]
     if len(pages) >= 2:

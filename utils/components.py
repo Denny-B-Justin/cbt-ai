@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import pandas as pd
 from dash import dash_table, dcc, get_asset_url, html
@@ -51,7 +52,7 @@ def page_shell(current: str, body: Any) -> html.Div:
     return html.Div(className="page", children=[header(current), html.Main(id="main", children=body), footer()])
 
 
-def page_intro(title: str, lede: str, eyebrow: Optional[str] = None) -> html.Section:
+def page_intro(title: str, lede: str, eyebrow: str | None = None) -> html.Section:
     return html.Section(className="page-intro", children=html.Div(className="section-inner", children=[
         html.P(eyebrow, className="eyebrow") if eyebrow else None,
         html.H1(title, className="page-title"),
@@ -71,7 +72,7 @@ def step_card(n: int, title: str, hint: str, body: Any, cls: str = "") -> html.D
         html.Div(className="card-body", children=body)])
 
 
-def kpi(label: str, value: str, sub: Optional[str] = None, tone: Optional[str] = None) -> html.Div:
+def kpi(label: str, value: str, sub: str | None = None, tone: str | None = None) -> html.Div:
     return html.Div(className="kpi" + (" kpi-" + tone if tone else ""), children=[
         html.Div(label, className="kpi-label"), html.Div(value, className="kpi-value"),
         html.Div(sub, className="kpi-sub") if sub else None])
@@ -81,7 +82,7 @@ def kpi_strip(items: Sequence[html.Div]) -> html.Div:
     return html.Div(className="kpis", children=list(items))
 
 
-def notice(kind: str, children: Any, title: Optional[str] = None) -> html.Div:
+def notice(kind: str, children: Any, title: str | None = None) -> html.Div:
     """kind: info | warn | error | ok"""
     marks = {"info": "i", "warn": "!", "error": "×", "ok": "✓"}
     return html.Div(className="notice notice-" + kind, role="alert" if kind == "error" else "status", children=[
@@ -102,13 +103,13 @@ def graph(fig: Any) -> dcc.Graph:
     return dcc.Graph(figure=fig, config=GRAPH_CONFIG, style={"height": "%dpx" % int(height), "width": "100%"})
 
 
-def chart_card(title: str, fig: Any, hint: Optional[str] = None, cls: str = "") -> html.Div:
+def chart_card(title: str, fig: Any, hint: str | None = None, cls: str = "") -> html.Div:
     return html.Div(className=("chart-card " + cls).strip(), children=[
         html.H3(title, className="card-title"), html.P(hint, className="card-hint") if hint else None, graph(fig)])
 
 
 # ── upload and loading ──────────────────────────────────────────────────────
-def dropzone(component_id: str, title: str = "Drop a budget document here", filled: Optional[str] = None) -> dcc.Upload:
+def dropzone(component_id: str, title: str = "Drop a budget document here", filled: str | None = None) -> dcc.Upload:
     mb = C.max_upload_bytes() // (1024 * 1024)
     if filled:
         inner = [html.Strong(filled), html.Div([html.Span("Drop another file or "), html.Span("browse", className="link"),
@@ -139,8 +140,8 @@ def status_slot(slot_id: str, children: Any = None) -> dcc.Loading:
 
 
 # ── tables ──────────────────────────────────────────────────────────────────
-def data_table(df: pd.DataFrame, table_id: str, columns: Optional[List[Dict[str, Any]]] = None,
-               page_size: int = C.RESULT_TABLE_PAGE_SIZE, conditional: Optional[List[Dict[str, Any]]] = None) -> dash_table.DataTable:
+def data_table(df: pd.DataFrame, table_id: str, columns: list[dict[str, Any]] | None = None,
+               page_size: int = C.RESULT_TABLE_PAGE_SIZE, conditional: list[dict[str, Any]] | None = None) -> dash_table.DataTable:
     data = df.astype(object).where(df.notna(), None)
     cols = columns or [{"name": c, "id": c} for c in data.columns]
     records = data.to_dict("records")

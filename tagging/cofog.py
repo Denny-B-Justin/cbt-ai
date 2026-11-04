@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 _NEUTRAL = {
     "01": "General public services",
@@ -18,7 +17,7 @@ ENVIRONMENT_DIVISION = "05"
 _CODE_RE = re.compile(r"^\s*(\d{2})(?:00)?(?!\d)")
 
 
-def division_of(function_code: Optional[str]) -> Optional[str]:
+def division_of(function_code: str | None) -> str | None:
     """'05', '0500' and '05 Environmental protection' give '05'; '051' or '0501' give None."""
     if not function_code:
         return None

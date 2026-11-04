@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -10,18 +10,18 @@ import pandas as pd
 from utils import constants as C
 
 
-def _share(num: float, den: float) -> Optional[float]:
+def _share(num: float, den: float) -> float | None:
     return float(num) / float(den) if den and den > 0 and np.isfinite(den) else None
 
 
-def summarize(kind: str, df: pd.DataFrame) -> Dict[str, Any]:
+def summarize(kind: str, df: pd.DataFrame) -> dict[str, Any]:
     """Shares are by amount when amounts exist, otherwise by number of lines."""
     n = len(df)
     amt = df["amount"].fillna(0.0).astype(float)
     has_amount = bool(df["amount"].notna().any())
     basis = amt if has_amount else pd.Series(np.ones(n), index=df.index)
     total = float(basis.sum())
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "lines": n, "has_amount": has_amount, "total_amount": float(amt.sum()),
         "amount_lines": int(df["amount"].notna().sum()), "basis": "amount" if has_amount else "lines",
     }
@@ -45,7 +45,7 @@ def summarize(kind: str, df: pd.DataFrame) -> Dict[str, Any]:
     return out
 
 
-def rubric_score(rio: Dict[str, Any], eu: Dict[str, Any]) -> Dict[str, Any]:
+def rubric_score(rio: dict[str, Any], eu: dict[str, Any]) -> dict[str, Any]:
     """A fixed 0-100 rubric. The AI scores the budgets itself; this keeps its answer in a sensible range."""
     weighted = rio.get("weighted_share") or 0.0
     principal, significant = rio.get("principal_share") or 0.0, rio.get("significant_share") or 0.0

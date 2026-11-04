@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -37,10 +38,10 @@ class Analysis:
     pages: int
     rio: pd.DataFrame
     eu: pd.DataFrame
-    rio_summary: Dict[str, Any]
-    eu_summary: Dict[str, Any]
-    stats: Dict[str, Any]
-    issues: List[Dict[str, str]] = field(default_factory=list)
+    rio_summary: dict[str, Any]
+    eu_summary: dict[str, Any]
+    stats: dict[str, Any]
+    issues: list[dict[str, str]] = field(default_factory=list)
 
     @property
     def name(self) -> str:
@@ -55,11 +56,11 @@ def _key(line: L.Line) -> tuple:
     return tuple(" ".join(s.lower().split()) for s in (line.ministry, line.title, line.description, line.function_code))
 
 
-def _unique_items(lines: List[L.Line]):
+def _unique_items(lines: list[L.Line]):
     """One entry per distinct classification, so identical lines are tagged once."""
-    index: Dict[tuple, int] = {}
-    unique: List[L.Line] = []
-    line_to_id: List[int] = []
+    index: dict[tuple, int] = {}
+    unique: list[L.Line] = []
+    line_to_id: list[int] = []
     for ln in lines:
         k = _key(ln)
         if k not in index:
@@ -69,7 +70,7 @@ def _unique_items(lines: List[L.Line]):
     return unique, line_to_id
 
 
-def _base_frame(lines: List[L.Line]) -> pd.DataFrame:
+def _base_frame(lines: list[L.Line]) -> pd.DataFrame:
     return pd.DataFrame({
         "line": range(1, len(lines) + 1), "page": [ln.page or None for ln in lines], "code": [ln.code or None for ln in lines],
         "ministry": [ln.ministry or None for ln in lines], "programme": [ln.title for ln in lines],
@@ -77,11 +78,11 @@ def _base_frame(lines: List[L.Line]) -> pd.DataFrame:
         "amount": [ln.amount if ln.amount is not None else np.nan for ln in lines]})
 
 
-def build_frames(lines: List[L.Line], verdicts: Dict[int, Optional[AIVerdict]], unique: List[L.Line],
-                 line_to_id: List[int]) -> Dict[str, pd.DataFrame]:
+def build_frames(lines: list[L.Line], verdicts: dict[int, AIVerdict | None], unique: list[L.Line],
+                 line_to_id: list[int]) -> dict[str, pd.DataFrame]:
     rio_tagger, eu_tagger = RioMarkerTagger(), EUTaxonomyTagger()
-    rio_by_id: Dict[int, Dict[str, Any]] = {}
-    eu_by_id: Dict[int, Dict[str, Any]] = {}
+    rio_by_id: dict[int, dict[str, Any]] = {}
+    eu_by_id: dict[int, dict[str, Any]] = {}
     for i, ln in enumerate(unique, start=1):
         text = LineText(ln.title, ln.description, ln.ministry, ln.function_code)
         ai = verdicts.get(i)
@@ -96,7 +97,7 @@ def build_frames(lines: List[L.Line], verdicts: Dict[int, Optional[AIVerdict]], 
     return out
 
 
-def _method_counts(df: pd.DataFrame, line_to_id: List[int]) -> Dict[str, int]:
+def _method_counts(df: pd.DataFrame, line_to_id: list[int]) -> dict[str, int]:
     """Count distinct classifications (not lines) per deciding rule, labelled for the chart."""
     first = pd.Series(line_to_id).drop_duplicates().index
     counts = df.iloc[first]["tag_method"].value_counts()
@@ -104,7 +105,7 @@ def _method_counts(df: pd.DataFrame, line_to_id: List[int]) -> Dict[str, int]:
 
 
 def analyse_document(data: bytes, filename: str, progress: ProgressFn,
-                     cancelled: Optional[Callable[[], bool]] = None) -> Analysis:
+                     cancelled: Callable[[], bool] | None = None) -> Analysis:
     started = time.time()
     try:
         progress(C.STAGE_READ)
@@ -167,17 +168,17 @@ def analyse_document(data: bytes, filename: str, progress: ProgressFn,
 # ── comparing two analysed budgets ──────────────────────────────────────────
 @dataclass
 class Comparison:
-    scores: Dict[str, int]
-    reasons: Dict[str, str]
+    scores: dict[str, int]
+    reasons: dict[str, str]
     summary: str
-    rubric: Dict[str, Dict[str, Any]]
+    rubric: dict[str, dict[str, Any]]
 
 
-def _pct(v: Optional[float]) -> str:
+def _pct(v: float | None) -> str:
     return "n/a" if v is None else "%.1f%%" % (v * 100)
 
 
-def _top_lines(a: Analysis, mask: pd.Series, n: int = 5) -> List[str]:
+def _top_lines(a: Analysis, mask: pd.Series, n: int = 5) -> list[str]:
     df = a.rio[mask.values].copy()
     if df.empty:
         return []
@@ -186,7 +187,7 @@ def _top_lines(a: Analysis, mask: pd.Series, n: int = 5) -> List[str]:
     return [str(t)[:90] for t in top["programme"]]
 
 
-def brief(a: Analysis, label: str) -> Dict[str, Any]:
+def brief(a: Analysis, label: str) -> dict[str, Any]:
     r, e = a.rio_summary, a.eu_summary
     return {
         "label": label, "name": a.name + (" (%s)" % a.subtitle if a.subtitle else ""), "lines": r["lines"], "basis": r["basis"],
@@ -194,7 +195,7 @@ def brief(a: Analysis, label: str) -> Dict[str, Any]:
         "significant_share": _pct(r["significant_share"]), "mitigation_share": _pct(r["mitigation_share"]),
         "adaptation_share": _pct(r["adaptation_share"]), "green_share": _pct(e["green_share"]),
         "brown_share": _pct(e["brown_share"]),
-        "objectives": ", ".join("%s %s" % (k.replace("_", " "), _pct(v)) for k, v in e["objective_shares"].items()),
+        "objectives": ", ".join("{} {}".format(k.replace("_", " "), _pct(v)) for k, v in e["objective_shares"].items()),
         "top_green": _top_lines(a, a.rio["rio_marker"] > 0), "top_brown": _top_lines(a, a.eu["climate_tag"] == C.TAG_BROWN, 3),
     }
 
@@ -207,7 +208,7 @@ def _fallback_reason(a: Analysis) -> str:
     return text + "."
 
 
-def compare_budgets(a: Analysis, b: Analysis, cancelled: Optional[Callable[[], bool]] = None) -> Comparison:
+def compare_budgets(a: Analysis, b: Analysis, cancelled: Callable[[], bool] | None = None) -> Comparison:
     items = {"A": a, "B": b}
     rubric = {k: rubric_score(v.rio_summary, v.eu_summary) for k, v in items.items()}
     scores = {k: rubric[k]["score"] for k in items}

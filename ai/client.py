@@ -13,14 +13,15 @@ import importlib
 import os
 import threading
 from types import ModuleType
-from typing import Any, Callable, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from utils import constants as C
 
 from .ratelimit import RateLimiter, call_with_retries
 from .types import AIConfigError, Attachment
 
-_limiter: Optional[RateLimiter] = None
+_limiter: RateLimiter | None = None
 _lock = threading.Lock()
 
 
@@ -48,7 +49,7 @@ def is_configured() -> bool:
 
 
 def ask_json(system: str, prompt: str, schema: dict, attachments: Sequence[Attachment] = (),
-             max_output_tokens: int = 16384, cancelled: Optional[Callable[[], bool]] = None) -> Any:
+             max_output_tokens: int = 16384, cancelled: Callable[[], bool] | None = None) -> Any:
     prov = provider()
     if not prov.is_configured():
         raise AIConfigError("No API key is configured")

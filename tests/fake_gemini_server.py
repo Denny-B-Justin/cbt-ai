@@ -5,16 +5,16 @@ from __future__ import annotations
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 
-def ok_body(text: str, finish: str = "STOP") -> Dict[str, Any]:
+def ok_body(text: str, finish: str = "STOP") -> dict[str, Any]:
     return {"candidates": [{"content": {"role": "model", "parts": [{"text": text}]}, "finishReason": finish, "index": 0}],
             "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 5, "totalTokenCount": 15},
             "modelVersion": "fake"}
 
 
-def error_body(code: int, status: str, message: str, details: list = None) -> Dict[str, Any]:
+def error_body(code: int, status: str, message: str, details: list = None) -> dict[str, Any]:
     return {"error": {"code": code, "message": message, "status": status, "details": details or []}}
 
 
@@ -22,8 +22,8 @@ class FakeGeminiServer:
     """queue: list of (http_status, json_body). When empty, answers 200 with `default_text`."""
 
     def __init__(self, default_text: str = '{"ok": true}'):
-        self.queue: List[Tuple[int, Dict[str, Any]]] = []
-        self.requests: List[Dict[str, Any]] = []
+        self.queue: list[tuple[int, dict[str, Any]]] = []
+        self.requests: list[dict[str, Any]] = []
         self.default_text = default_text
         outer = self
 
@@ -50,7 +50,7 @@ class FakeGeminiServer:
     def url(self) -> str:
         return "http://127.0.0.1:%d" % self.httpd.server_address[1]
 
-    def start(self) -> "FakeGeminiServer":
+    def start(self) -> FakeGeminiServer:
         self.thread.start()
         return self
 

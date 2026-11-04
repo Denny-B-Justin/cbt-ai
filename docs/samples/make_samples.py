@@ -87,7 +87,7 @@ def make_pdf(spec: dict) -> None:
     body += [Paragraph(t, styles["Normal"]) for t in spec["intro"]] + [Spacer(1, 12)]
     cell = styles["BodyText"]
     rows = [["Code", "Programme", "Description", "Amount"]]
-    rows += [[c, Paragraph(p, cell), Paragraph(d, cell), "{:,.1f}".format(a)] for c, p, d, a in spec["lines"]]
+    rows += [[c, Paragraph(p, cell), Paragraph(d, cell), f"{a:,.1f}"] for c, p, d, a in spec["lines"]]
     rows.append(["", Paragraph("<b>Total</b>", cell), "", "{:,.1f}".format(_total(spec["lines"]))])
     table = Table(rows, colWidths=[44, 130, 280, 60], repeatRows=1)
     table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F3B2A")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -110,7 +110,7 @@ def make_docx(spec: dict) -> None:
         table.rows[0].cells[i].text = h
     for c, p, d, a in spec["lines"]:
         cells = table.add_row().cells
-        for i, v in enumerate([c, p, d, "{:,.1f}".format(a)]):
+        for i, v in enumerate([c, p, d, f"{a:,.1f}"]):
             cells[i].text = v
     cells = table.add_row().cells
     cells[1].text, cells[3].text = "Total", "{:,.1f}".format(_total(spec["lines"]))

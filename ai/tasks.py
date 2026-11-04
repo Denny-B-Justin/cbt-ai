@@ -9,7 +9,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from tagging.models import AIVerdict
 from utils import constants as C
@@ -34,7 +35,7 @@ def _workers() -> int:
 
 
 # ── 1. describe ─────────────────────────────────────────────────────────────
-def describe_document(doc: Document, cancelled: Optional[Callable[[], bool]] = None) -> DocInfo:
+def describe_document(doc: Document, cancelled: Callable[[], bool] | None = None) -> DocInfo:
     fallback = DocInfo(name=Path(doc.filename).stem.replace("_", " ").strip()[:120])
     try:
         data = client.ask_json(prompt.DESCRIBE_SYSTEM, prompt.describe_prompt(doc.sample_text(), doc.filename),
@@ -58,12 +59,12 @@ def describe_document(doc: Document, cancelled: Optional[Callable[[], bool]] = N
 # ── 2. find the budget lines ────────────────────────────────────────────────
 @dataclass
 class Extraction:
-    records: List[Dict[str, Any]] = field(default_factory=list)
-    failed_sections: List[str] = field(default_factory=list)
+    records: list[dict[str, Any]] = field(default_factory=list)
+    failed_sections: list[str] = field(default_factory=list)
     sections: int = 0
 
 
-def _records(data: Any, chunk: Chunk) -> List[Dict[str, Any]]:
+def _records(data: Any, chunk: Chunk) -> list[dict[str, Any]]:
     rows = data.get("lines") if isinstance(data, dict) else data
     if not isinstance(rows, list):
         raise AIResponseError("The answer had no list of lines")
@@ -77,7 +78,7 @@ def _records(data: Any, chunk: Chunk) -> List[Dict[str, Any]]:
     return out
 
 
-def _extract_chunk(chunk: Chunk, doc: Document, info: DocInfo, cancelled, depth: int = 0) -> List[Dict[str, Any]]:
+def _extract_chunk(chunk: Chunk, doc: Document, info: DocInfo, cancelled, depth: int = 0) -> list[dict[str, Any]]:
     attachments = [Attachment("application/pdf", chunk.pdf_slice)] if chunk.pdf_slice else []
     text = prompt.extract_prompt(chunk.text, info, chunk.label, bool(attachments))
     try:
@@ -97,15 +98,15 @@ def _extract_chunk(chunk: Chunk, doc: Document, info: DocInfo, cancelled, depth:
 
 
 def extract_budget_lines(doc: Document, info: DocInfo, progress: ProgressFn,
-                         cancelled: Optional[Callable[[], bool]] = None) -> Extraction:
+                         cancelled: Callable[[], bool] | None = None) -> Extraction:
     chunks = make_chunks(doc)
     abort = threading.Event()
 
     def stop() -> bool:
         return abort.is_set() or bool(cancelled and cancelled())
 
-    results: Dict[int, List[Dict[str, Any]]] = {}
-    failed: List[str] = []
+    results: dict[int, list[dict[str, Any]]] = {}
+    failed: list[str] = []
     done = 0
     progress(C.STAGE_FIND, "Section 0 of %d" % len(chunks))
     with ThreadPoolExecutor(max_workers=_workers()) as pool:
@@ -143,8 +144,8 @@ def _level(v: Any) -> int:
         return 0
 
 
-def verdict_from_row(row: Dict[str, Any]) -> AIVerdict:
-    objectives: List[str] = []
+def verdict_from_row(row: dict[str, Any]) -> AIVerdict:
+    objectives: list[str] = []
     for o in row.get("eu_objectives") or []:
         if o in C.EU_OBJECTIVES and o not in objectives:
             objectives.append(o)
@@ -162,7 +163,7 @@ def verdict_from_row(row: Dict[str, Any]) -> AIVerdict:
                      rationale=_text(row.get("rationale"), 260))
 
 
-def _tag_batch(batch: List[Dict[str, Any]], cancelled, depth: int = 0) -> Dict[int, AIVerdict]:
+def _tag_batch(batch: list[dict[str, Any]], cancelled, depth: int = 0) -> dict[int, AIVerdict]:
     try:
         data = client.ask_json(prompt.TAG_SYSTEM, prompt.tag_prompt(batch), TAG_SCHEMA, max_output_tokens=16384,
                                cancelled=cancelled)
@@ -173,7 +174,7 @@ def _tag_batch(batch: List[Dict[str, Any]], cancelled, depth: int = 0) -> Dict[i
         raise
     rows = data.get("tags") if isinstance(data, dict) else data
     wanted = {int(b["id"]) for b in batch}
-    out: Dict[int, AIVerdict] = {}
+    out: dict[int, AIVerdict] = {}
     for r in rows if isinstance(rows, list) else []:
         try:
             i = int(r.get("id"))
@@ -184,15 +185,15 @@ def _tag_batch(batch: List[Dict[str, Any]], cancelled, depth: int = 0) -> Dict[i
     return out
 
 
-def _run_batches(batches: List[List[Dict[str, Any]]], progress: ProgressFn, cancelled, done_offset: int,
+def _run_batches(batches: list[list[dict[str, Any]]], progress: ProgressFn, cancelled, done_offset: int,
                  total: int) -> tuple:
     abort = threading.Event()
 
     def stop() -> bool:
         return abort.is_set() or bool(cancelled and cancelled())
 
-    verdicts: Dict[int, AIVerdict] = {}
-    last_error: Optional[AIError] = None
+    verdicts: dict[int, AIVerdict] = {}
+    last_error: AIError | None = None
     done = done_offset
     with ThreadPoolExecutor(max_workers=_workers()) as pool:
         futures = {pool.submit(_tag_batch, b, stop): b for b in batches}
@@ -214,8 +215,8 @@ def _run_batches(batches: List[List[Dict[str, Any]]], progress: ProgressFn, canc
     return verdicts, last_error
 
 
-def tag_budget_lines(items: List[Dict[str, Any]], progress: ProgressFn,
-                     cancelled: Optional[Callable[[], bool]] = None) -> Dict[int, AIVerdict]:
+def tag_budget_lines(items: list[dict[str, Any]], progress: ProgressFn,
+                     cancelled: Callable[[], bool] | None = None) -> dict[int, AIVerdict]:
     """items: dicts with id, title, ministry, description, function_code. Returns id -> verdict (missing ids = AI failed)."""
     size = C.TAG_BATCH_SIZE
     total = len(items)
@@ -233,13 +234,13 @@ def tag_budget_lines(items: List[Dict[str, Any]], progress: ProgressFn,
 
 
 # ── 4. score ────────────────────────────────────────────────────────────────
-def score_budgets(briefs: List[Dict[str, Any]], cancelled: Optional[Callable[[], bool]] = None) -> Dict[str, Any]:
+def score_budgets(briefs: list[dict[str, Any]], cancelled: Callable[[], bool] | None = None) -> dict[str, Any]:
     """Returns {"scores": {"A": (score, reason), ...}, "summary": str}. Raises AIError if the answer is unusable."""
     data = client.ask_json(prompt.SCORE_SYSTEM, prompt.score_prompt(briefs), SCORE_SCHEMA, max_output_tokens=2048,
                            cancelled=cancelled)
     if not isinstance(data, dict):
         raise AIResponseError("The score answer was not an object")
-    scores: Dict[str, Any] = {}
+    scores: dict[str, Any] = {}
     for row in data.get("budgets") or []:
         try:
             scores[str(row["label"])] = (max(0, min(100, int(row["score"]))), _text(row.get("reason"), 300))

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -34,7 +33,7 @@ class AIRateLimitError(AIError):
     """Too many requests per minute. Wait and retry."""
     user_message = "The analysis service is busy right now. Please try again in a few minutes."
 
-    def __init__(self, message: str = "", retry_after: Optional[float] = None):
+    def __init__(self, message: str = "", retry_after: float | None = None):
         super().__init__(message)
         self.retry_after = retry_after
 
