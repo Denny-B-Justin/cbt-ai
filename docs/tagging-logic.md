@@ -95,3 +95,19 @@ The Rio marker of a line is `max(mitigation, adaptation)`.
 - **EU**: `green_share`, `brown_share`, per-objective amounts and shares (`objective_shares`; a line serving several
   objectives counts fully towards each, so objective shares can add up to more than the green share), counts by rule.
 - All charts and the Excel files read these dictionaries and the two frames; nothing is recomputed in the page code.
+
+## 7. Georgian Taxonomy (`tagging/georgia.py`)
+
+Method of *Climate Budget Tagging in Georgia, Handbook* (MEPA and World Bank, June 2025), Steps 1–3. It is a separate model
+call (`ai/prompt.py::GEO_TAG_SYSTEM`) on the same distinct lines; there is no keyword second opinion and it never changes
+the Rio or EU tags.
+
+- The model answers Q1–Q4 and picks a level class. `tasks.geo_verdict_from_row` makes it consistent: mitigation =
+  Q1 and Q2, adaptation = Q3 and Q4; a climate-tagged line always has one of **100, 70, 40, 20** (a 0 or missing level
+  on a tagged line becomes 20, other numbers snap to the nearest class, ties go lower); any other line has level 0.
+- Service-oriented lines are not tagged. A line with only liveable / habitable wording is adaptation at level 20.
+- Climate amount = amount × level / 100; a CB line puts half of it in mitigation and half in adaptation, so a line is
+  never counted more than once. Basis is amount, or number of lines when there are no amounts.
+- `summarize_georgia` returns the headline shares and the grouped tables (level, level × code, sector, ministry,
+  function, decided-by, liveable lines) that the Evaluate page draws. A per-year chart is not drawn: an analysis
+  covers one budget year, so it would repeat the headline share.

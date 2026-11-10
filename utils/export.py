@@ -23,13 +23,21 @@ def _amount_header(a: Analysis) -> str:
 
 def display_frame(a: Analysis, kind: str) -> pd.DataFrame:
     """The tagged lines with plain column names, the way people read them."""
-    df = a.rio if kind == C.KIND_RIO else a.eu
+    df = {C.KIND_RIO: a.rio, C.KIND_EU: a.eu, C.KIND_GEO: a.georgia}[kind]
     out = pd.DataFrame({"Line": df["line"], "Page": df["page"], "Ministry": df["ministry"], "Budget line": df["programme"],
                         _amount_header(a): df["amount"]})
     if kind == C.KIND_RIO:
         out["Rio marker"] = df["rio_marker"].map(lambda m: "%d · %s" % (m, C.RIO_LABELS[int(m)]))
         out["Mitigation"] = df["rio_mitigation"]
         out["Adaptation"] = df["rio_adaptation"]
+    elif kind == C.KIND_GEO:
+        out["CBT code"] = df["geo_code"].map(lambda c: C.GEO_CODE_LABELS.get(c, C.GEO_NOT_TAGGED))
+        out["Climate level"] = df["geo_level"].map(lambda lv: C.GEO_LEVEL_LABELS.get(int(lv), C.GEO_NOT_TAGGED))
+        out["Climate part"] = df["climate_amount"]
+        out["Mitigation part"] = df["mitigation_amount"]
+        out["Adaptation part"] = df["adaptation_amount"]
+        out["Sector"] = df["geo_sector"]
+        out["Function"] = df["geo_function"]
     else:
         flags = [C.EU_FLAG_COLUMNS[k] for k in C.EU_OBJECTIVES]
         out["Climate tag"] = df["climate_tag"].map(lambda t: C.TAG_LABELS.get(t, t))
@@ -54,6 +62,14 @@ def summary_rows(a: Analysis) -> list[list[Any]]:
         [C.KIND_LABELS[C.KIND_EU], "Green share", fmt_pct(e["green_share"])],
         [C.KIND_LABELS[C.KIND_EU], "Brown share", fmt_pct(e["brown_share"])]]
     rows += [[C.KIND_LABELS[C.KIND_EU], C.EU_LABELS[k], fmt_pct(e["objective_shares"].get(k))] for k in C.EU_OBJECTIVES]
+    g, geo = a.georgia_summary, C.KIND_LABELS[C.KIND_GEO]
+    if g:
+        rows += [[geo, "Climate share (each tagged line counts at its level)", fmt_pct(g["climate_share"])],
+                 [geo, "Mitigation", fmt_pct(g["mitigation_share"])], [geo, "Adaptation", fmt_pct(g["adaptation_share"])],
+                 [geo, "Climate-tagged lines", g["tagged_lines"]]]
+        rows += [[geo, C.GEO_CODE_LABELS[c] + " (lines)", g["code_lines"][c]] for c in C.GEO_CODES]
+        rows += [[geo, "%s, share of the climate spend" % C.GEO_LEVEL_LABELS[lv], fmt_pct(g["level_of_climate"][lv])]
+                 for lv in C.GEO_LEVELS]
     return rows
 
 
@@ -83,6 +99,8 @@ def evaluation_workbook(a: Analysis) -> bytes:
         pd.DataFrame(summary_rows(a), columns=["Method", "Measure", "Value"]).to_excel(xl, sheet_name="Summary", index=False)
         display_frame(a, C.KIND_RIO).to_excel(xl, sheet_name="Rio Markers", index=False)
         display_frame(a, C.KIND_EU).to_excel(xl, sheet_name="EU Taxonomy", index=False)
+        if a.georgia is not None:
+            display_frame(a, C.KIND_GEO).to_excel(xl, sheet_name="Georgian Taxonomy", index=False)
         _fit(xl)
     return out.getvalue()
 

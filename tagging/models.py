@@ -50,3 +50,24 @@ class AIVerdict:
     @property
     def rio_marker(self) -> int:
         return max(self.rio_mitigation, self.rio_adaptation)
+
+
+@dataclass
+class GeoVerdict:
+    """What the AI decided for one budget line with the Georgian method, already made consistent.
+
+    level is one of 100, 70, 40, 20 for a climate-tagged line (mitigation or adaptation) and 0 otherwise.
+    """
+    q1_ghg_related: bool = False
+    q2_mitigation_measure: bool = False
+    q3_climate_hazard_related: bool = False
+    q4_adaptation_measure: bool = False
+    mitigation: bool = False
+    adaptation: bool = False
+    level: int = 0
+    floor_only: bool = False
+    service_oriented: bool = False
+    sector: str = "None"
+    function: str = "Not known"
+    confidence: str = "MEDIUM"
+    rationale: str = ""

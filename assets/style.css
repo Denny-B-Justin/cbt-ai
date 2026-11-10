@@ -237,6 +237,7 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 .subhead-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
 .table-note { color: var(--ink-mute); font-size: 13.5px; margin-bottom: 8px; }
 .chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.chart-wide { grid-column: 1 / -1; }
 .chart-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px 10px; min-width: 0; }
 .chart-card .card-title { font-size: 16px; }
 .chart-wide { grid-column: 1 / -1; }

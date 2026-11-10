@@ -11,7 +11,7 @@ from . import components as ui
 from . import constants as C
 
 SECTIONS = [("idea", "The idea in short"), ("steps", "From document to results"), ("rio", "Rio Markers"), ("eu", "EU Taxonomy"),
-            ("skip", "Spending we do not count"), ("shares", "How the shares are worked out"), ("sure", "How sure are we?"),
+            ("georgia", "Georgian Taxonomy"), ("skip", "Spending we do not count"), ("shares", "How the shares are worked out"), ("sure", "How sure are we?"),
             ("score", "The overall score"), ("know", "Good to know"), ("words", "Words used in this tool")]
 
 
@@ -48,6 +48,32 @@ def _swatch(colour: str) -> html.Span:
     return html.Span(className="swatch", style={"background": colour})
 
 
+def _georgia() -> html.Section:
+    return _section("georgia", "Georgian Taxonomy",
+                    _p("The Georgian Taxonomy follows the handbook ", html.Em("Climate Budget Tagging in Georgia"),
+                       " (Ministry of Environmental Protection and Agriculture of Georgia and the World Bank, June 2025). "
+                       "It is a separate reading of every line, with its own questions; it does not reuse the Rio Markers or EU Taxonomy tags."),
+                    _p("Each line is checked with four guiding questions, in order:"),
+                    _list(["Q1: does the line involve activities that emit or absorb greenhouse gases?",
+                           "Q2: does it include a measure that cuts those emissions or absorbs more, for example renewable energy, insulation or new forests?",
+                           "Q3: does it involve risks from climate hazards such as floods, droughts, landslides, heat or storms?",
+                           "Q4: does it include a measure that lowers those risks or makes people and places more resilient?"]),
+                    _table(["Code", "When"], [
+                        [[_swatch(C.GEO_CODE_COLORS[C.GEO_CM]), C.GEO_CODE_LABELS[C.GEO_CM]], "Q1 and Q2 are yes."],
+                        [[_swatch(C.GEO_CODE_COLORS[C.GEO_CA]), C.GEO_CODE_LABELS[C.GEO_CA]], "Q3 and Q4 are yes."],
+                        [[_swatch(C.GEO_CODE_COLORS[C.GEO_CB]), C.GEO_CODE_LABELS[C.GEO_CB]], "Both of the above. The counted part is split half and half."]]),
+                    _p("Every climate-tagged line, even one with only a small or indirect link, is placed in one of four levels. "
+                       "The levels are classes chosen from what the line says, not measured percentages. Lines that are not climate-tagged have no level."),
+                    _table(["Level", "What it means", "How much of the line counts"],
+                           [[[_swatch(C.GEO_LEVEL_COLORS[lv]), C.GEO_LEVEL_LABELS[lv]], C.GEO_LEVEL_MEANING[lv], "%d%%" % lv] for lv in C.GEO_LEVELS]),
+                    _list([[html.Strong("Service costs are not tagged."), " Salaries, equipment, upkeep and general management that support a whole programme or ministry. "
+                            "Pay that belongs to one specific climate activity takes the level of that activity."],
+                           [html.Strong("Liveable or habitable wording."), " A line named for liveable or habitable cities, with no other climate measure, "
+                            "counts as adaptation at level %d. This is a rule of this tool, not of the handbook." % C.GEO_FLOOR_LEVEL]]),
+                    _callout("An example", "A line of 10 million at level 70 that is both mitigation and adaptation (CB) adds 7 million to the climate "
+                                           "share: 3.5 million to mitigation and 3.5 million to adaptation."))
+
+
 def _body() -> list[Any]:
     w = C.RIO_WEIGHTS
     significant = int(round(w[1] * 100))
@@ -63,8 +89,9 @@ def _body() -> list[Any]:
                  _p("Governments spend money on many things. Some of that spending helps to fight climate change, or helps people and places "
                     "cope with its effects. This tool finds that spending and shows you how big it is."),
                  _p("It looks at every line of a budget, for example ", html.Strong("Solar power plant"), " or ", html.Strong("Flood protection"),
-                    ", and asks: does this line help the climate? If it does, how much? The answers are written in two well-known ways: "
-                    "the ", html.Strong("Rio Markers"), " and the ", html.Strong("EU Taxonomy"), ". You see both for every budget."),
+                    ", and asks: does this line help the climate? If it does, how much? The answers are written in three ways: "
+                    "the ", html.Strong("Rio Markers"), ", the ", html.Strong("EU Taxonomy"), " and the ", html.Strong("Georgian Taxonomy"),
+                    ". You see all three for every budget."),
                  _callout("Think of it as a careful first reading",
                           "It saves many hours of work. But people should always check the results before using them in an official decision.")),
         _section("steps", "From document to results", _flow([
@@ -103,6 +130,7 @@ def _body() -> list[Any]:
                      [[_swatch(C.NO_DATA_COLOR), "Neutral"], "Everything else."]]),
                  _p("The ", html.Strong("green share"), " is the part of the budget that is Green. The ", html.Strong("brown share"),
                     " is the part that is Brown.")),
+        _georgia(),
         _section("skip", "Spending we do not count",
                  _p("Some spending is not climate spending, even when the name sounds green. We do not count:"),
                  _list([[html.Strong("Routine running costs"), " such as salaries, pensions, rent, office costs, interest on debt, audits and routine upkeep."],

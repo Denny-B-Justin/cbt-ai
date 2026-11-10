@@ -111,7 +111,23 @@ def build_rows(a: Analysis, b: Analysis) -> list[Row]:
         pct("Green share", "green_share", ea, eb, True),
         pct("Brown share (lower is better)", "brown_share", ea, eb, False),
         Row("Environmental objectives served", "%d of %d" % (na, len(C.EU_OBJECTIVES)), "%d of %d" % (nb, len(C.EU_OBJECTIVES)),
-            _better(float(na), float(nb)), sa, sb)]
+            _better(float(na), float(nb)), sa, sb),
+        *_georgia_rows(a.georgia_summary, b.georgia_summary)]
+
+
+def _georgia_rows(ga: dict[str, Any], gb: dict[str, Any]) -> list[Row]:
+    if not ga or not gb:
+        return []
+    top = C.GEO_LEVELS[0]
+    return [
+        Row(C.KIND_LABELS[C.KIND_GEO], group=True),
+        Row("Climate share (level-weighted)", fmt_pct(ga["climate_share"]), fmt_pct(gb["climate_share"]),
+            _better(ga["climate_share"], gb["climate_share"])),
+        Row("Mitigation", fmt_pct(ga["mitigation_share"]), fmt_pct(gb["mitigation_share"])),
+        Row("Adaptation", fmt_pct(ga["adaptation_share"]), fmt_pct(gb["adaptation_share"])),
+        Row("Climate-tagged lines", fmt_int(ga["tagged_lines"]), fmt_int(gb["tagged_lines"])),
+        Row("Climate spend at %s" % C.GEO_LEVEL_LABELS[top].lower(), fmt_pct(ga["level_of_climate"][top]),
+            fmt_pct(gb["level_of_climate"][top]))]
 
 
 def _head(key: str, a: Analysis) -> html.Th:

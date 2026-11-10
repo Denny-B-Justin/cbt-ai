@@ -54,6 +54,27 @@ TAG_SCHEMA = {
     "required": ["tags"],
 }
 
+GEO_TAG_SCHEMA = {
+    "type": "object",
+    "properties": {"georgia": {"type": "array", "items": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "integer"},
+            "q1_ghg_related": {"type": "boolean"}, "q2_mitigation_measure": {"type": "boolean"},
+            "q3_climate_hazard_related": {"type": "boolean"}, "q4_adaptation_measure": {"type": "boolean"},
+            "sector": {"type": "string", "enum": C.GEO_SECTORS},
+            "function": {"type": "string", "enum": C.GEO_FUNCTIONS},
+            "climate_level": {"type": "integer"},
+            "livability_floor": {"type": "boolean"}, "service_oriented": {"type": "boolean"},
+            "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+            "rationale": {"type": "string"},
+        },
+        "required": ["id", "q1_ghg_related", "q2_mitigation_measure", "q3_climate_hazard_related", "q4_adaptation_measure",
+                     "sector", "function", "climate_level", "livability_floor", "service_oriented", "confidence", "rationale"],
+    }}},
+    "required": ["georgia"],
+}
+
 SCORE_SCHEMA = {
     "type": "object",
     "properties": {

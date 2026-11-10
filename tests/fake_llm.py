@@ -46,6 +46,8 @@ class FakeProvider:
             raise self.error
         if "tags" in schema["properties"]:
             return self._tag(prompt)
+        if "georgia" in schema["properties"]:
+            return self._georgia(prompt)
         if "lines" in schema["properties"]:
             return self._extract(prompt)
         if "budgets" in schema["properties"]:
@@ -85,23 +87,42 @@ class FakeProvider:
                                 "amount": m.group(1), "kind": "programme", "page": page})
         return {"lines": out}
 
-    def _tag(self, prompt: str) -> dict:
+    @staticmethod
+    def _lines(prompt: str):
         body = prompt.split("<document>", 1)[1].rsplit("</document>", 1)[0]
-        tags = []
         for raw in body.splitlines():
             m = re.match(r"\[(\d+)\] Title: (.*)", raw)
-            if not m:
-                continue
-            parts = {p.split(": ", 1)[0]: p.split(": ", 1)[1] for p in m.group(2).split(" | ") if ": " in p}
-            text = LineText(("Title: " + m.group(2)).split(" | ")[0][7:], parts.get("Description", ""), parts.get("Ministry", ""))
+            if m:
+                parts = {p.split(": ", 1)[0]: p.split(": ", 1)[1] for p in m.group(2).split(" | ") if ": " in p}
+                yield int(m.group(1)), LineText(("Title: " + m.group(2)).split(" | ")[0][7:], parts.get("Description", ""),
+                                                parts.get("Ministry", ""))
+
+    def _tag(self, prompt: str) -> dict:
+        tags = []
+        for line_id, text in self._lines(prompt):
             rio, eu = self.rio.tag(text), self.eu.tag(text)
             admin = rio.method.endswith("EXCLUSION")
-            tags.append({"id": int(m.group(1)), "rio_mitigation": 0 if admin else rio.mitigation,
+            tags.append({"id": line_id, "rio_mitigation": 0 if admin else rio.mitigation,
                          "rio_adaptation": 0 if admin else rio.adaptation,
                          "eu_objectives": [] if admin or eu.tag != C.TAG_GREEN else [k for k in C.EU_OBJECTIVES if eu.objectives[k]],
                          "brown": eu.tag == C.TAG_BROWN, "administrative": admin, "confidence": "high",
                          "rationale": "Fake verdict for testing."})
         return {"tags": tags}
+
+    def _georgia(self, prompt: str) -> dict:
+        out = []
+        for line_id, text in self._lines(prompt):
+            rio = self.rio.tag(text)
+            admin = rio.method.endswith("EXCLUSION")
+            mit, ada = rio.mitigation > 0 and not admin, rio.adaptation > 0 and not admin
+            floor = any(w in text.text for w in ("liveable", "livable", "habitable"))
+            out.append({"id": line_id, "q1_ghg_related": mit, "q2_mitigation_measure": mit, "q3_climate_hazard_related": ada,
+                        "q4_adaptation_measure": ada, "sector": "Cross-cutting" if mit or ada or floor else "None",
+                        "function": "Environmental protection" if mit or ada else "Not known",
+                        "climate_level": {2: 100, 1: 40}.get(rio.marker, 0) if mit or ada else 20 if floor else 0,
+                        "livability_floor": floor, "service_oriented": admin, "confidence": "high",
+                        "rationale": "Fake Georgian verdict for testing."})
+        return {"georgia": out}
 
     def _score(self, prompt: str) -> dict:
         out = []

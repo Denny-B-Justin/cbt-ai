@@ -103,8 +103,50 @@ EU_LABELS = {
 
 KIND_RIO = "rio"
 KIND_EU = "eu"
-KINDS = (KIND_RIO, KIND_EU)
-KIND_LABELS = {KIND_RIO: "Rio Markers", KIND_EU: "EU Taxonomy"}
+KIND_GEO = "georgia"
+KINDS = (KIND_RIO, KIND_EU, KIND_GEO)
+KIND_LABELS = {KIND_RIO: "Rio Markers", KIND_EU: "EU Taxonomy", KIND_GEO: "Georgian Taxonomy"}
+
+# Georgian Taxonomy (Climate Budget Tagging in Georgia, Handbook, MEPA and World Bank, June 2025).
+# A climate-tagged line is classed in one of four levels; the level is the share of the line counted as climate.
+# A line that is not climate-tagged has no level (0 in the data).
+GEO_LEVELS = (100, 70, 40, 20)
+GEO_LEVEL_LABELS = {100: "Level 100", 70: "Level 70", 40: "Level 40", 20: "Level 20"}
+GEO_LEVEL_MEANING = {
+    100: "Climate is what the line is about: the whole line counts.",
+    70: "Most of the line is climate measures.",
+    40: "Climate measures are a meaningful part, mixed with other works.",
+    20: "A weak or indirect link to climate.",
+}
+GEO_FLOOR_LEVEL = 20                          # liveable / habitable wording only: counted as adaptation at this level
+GEO_CM, GEO_CA, GEO_CB = "CM", "CA", "CB"
+GEO_CODES = (GEO_CM, GEO_CA, GEO_CB)
+GEO_CODE_LABELS = {GEO_CM: "CM mitigation", GEO_CA: "CA adaptation", GEO_CB: "CB both"}
+GEO_NOT_TAGGED = "Not climate"
+GEO_SECTORS = ["Energy", "Transport", "Building", "Industry", "Agriculture", "Waste", "Forest", "Water",
+               "Coastal resorts", "Tourism", "Health", "Cross-cutting", "None"]
+GEO_FUNCTIONS = ["General public services", "Defence", "Public order and safety", "Economic affairs",
+                 "Environmental protection", "Housing and community amenities", "Health",
+                 "Recreation, culture and religion", "Education", "Social protection", "Not known"]
+
+GEO_DECIDED_BOTH = "GEO_BOTH"
+GEO_DECIDED_MIT = "GEO_MIT"
+GEO_DECIDED_ADP = "GEO_ADP"
+GEO_DECIDED_FLOOR = "GEO_FLOOR"
+GEO_DECIDED_SERVICE = "GEO_SERVICE"
+GEO_DECIDED_LINK = "GEO_LINK"
+GEO_DECIDED_NONE = "GEO_NONE"
+GEO_DECIDED_MISSING = "GEO_MISSING"
+GEO_DECIDED_LABELS = {
+    GEO_DECIDED_BOTH: "Mitigation and adaptation measures (Q2, Q4)",
+    GEO_DECIDED_MIT: "Mitigation measure (Q1, Q2)",
+    GEO_DECIDED_ADP: "Adaptation measure (Q3, Q4)",
+    GEO_DECIDED_FLOOR: "Liveable or habitable wording only (20% rule)",
+    GEO_DECIDED_SERVICE: "Service cost, not tagged",
+    GEO_DECIDED_LINK: "GHG or hazard link, no measure",
+    GEO_DECIDED_NONE: "No climate relevance",
+    GEO_DECIDED_MISSING: "Not assessed",
+}
 
 TAG_GREEN, TAG_BROWN, TAG_NEUTRAL = "GREEN", "BROWN", "NEUTRAL"
 TAG_LABELS = {TAG_GREEN: "Green", TAG_BROWN: "Brown", TAG_NEUTRAL: "Neutral"}
@@ -146,5 +188,11 @@ BROWN_COLOR = "#8B4513"
 TAG_COLORS = {TAG_GREEN: GREEN_COLOR, TAG_BROWN: BROWN_COLOR, TAG_NEUTRAL: NO_DATA_COLOR}
 RIO_COLORS = {0: NO_DATA_COLOR, 1: "#4FAE6F", 2: "#1B6B3A"}
 COMPARE_COLORS = {"A": "#1B6B3A", "B": "#EB6834"}
+MITIGATION_COLOR = "#1B8A5A"
+ADAPTATION_COLOR = "#2A78D6"
+BOTH_COLOR = "#C2410C"
+GEO_CODE_COLORS = {GEO_CM: MITIGATION_COLOR, GEO_CA: ADAPTATION_COLOR, GEO_CB: BOTH_COLOR}
+GEO_LEVEL_COLORS = {100: "#4B2A91", 70: "#7451BE", 40: "#A48CD9", 20: "#CDBEEA"}
+METHOD_COLOR = "#5E7A6B"
 
 RESULT_TABLE_PAGE_SIZE = 15

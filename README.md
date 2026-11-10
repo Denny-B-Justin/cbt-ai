@@ -1,7 +1,8 @@
 # Climate Budget Tagging Tool (AI edition)
 
 A Plotly Dash application that reads a government budget document (PDF, Word or Excel), has an LLM extract and tag every
-budget line against two taxonomies (**Rio Markers** and **EU Taxonomy**), computes all shares and charts deterministically
+budget line against three taxonomies (**Rio Markers**, **EU Taxonomy** and the **Georgian Taxonomy** of the
+CBT Handbook for Georgia), computes all shares and charts deterministically
 in code, and can score and compare two budgets.
 
 It succeeds the rule-based `wb-climate-budget-tagging` app (Excel/CSV in, keyword matching, Databricks storage). What changed:
@@ -94,6 +95,7 @@ browser ──upload (base64)──▶ dcc.Upload callback ──▶ session.sta
    │                                                3. tasks.extract_budget_lines  LLM, sections in parallel → raw records
    │                                                4. lines.select_lines          clean, de-duplicate, avoid double counting
    │                                                5. tasks.tag_budget_lines      LLM, batches of 60 → one verdict per distinct line
+   │                                                5b. tasks.tag_budget_lines_georgia  own prompt, same batches → CM/CA/CB + level
    │                                                6. reconcile + metrics         verdict + keyword check → tags; shares in pandas
    └────────────── charts, tables, .xlsx ◀────────  Analysis(rio, eu, summaries, issues)
 ```
@@ -120,6 +122,7 @@ tagging/               everything that decides or computes
   eu_tagger.py         keyword tagger (EU Taxonomy)         │ used as a second opinion only
   keywords.py, cofog.py, matcher.py                         ┘
   reconcile.py         verdict + second opinion → final tag, confidence, "decided by"
+  georgia.py           Georgian Taxonomy: line rows (level × amount, CB split 50/50) and every number its charts use
   metrics.py           shares, summaries, fallback scoring rubric
   pipeline.py          analyse_document, compare_budgets, Analysis dataclass
 utils/                 one module per page plus shared helpers
@@ -139,6 +142,7 @@ tests/                 pytest suite, stand-in model, fake mAI gateway, live smok
 | Describe | name, country, year, currency, unit | fallbacks when absent or odd |
 | Extract | which text rows are budget lines; amount, kind (programme / function / ministry / category / total), page | amount parsing, dropping totals, merging, hierarchy, duplicates, negative amounts |
 | Tag | Rio mitigation 0–2, adaptation 0–2, EU objectives, brown, administrative, confidence, one-line reason | normalisation to a consistent verdict; final tag via `reconcile` |
+| Tag (Georgian) | the four guiding questions, level class, sector, function, service cost, liveable wording | level snapped to 20/40/70/100 for tagged lines (0 otherwise); CB split; climate amounts |
 | Score | 0–100 and a sentence per budget, a two-sentence comparison | clamping to ±15 of the fixed rubric (`SCORE_GUARD`) |
 | Everything else | – | all sums, shares, charts, tables, Excel files |
 

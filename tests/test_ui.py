@@ -35,10 +35,21 @@ def base():
     server.shutdown()
 
 
+def _launch(p):
+    """Playwright's own Chromium first; without it (`playwright install chromium` not run), an installed Edge or Chrome."""
+    problems = []
+    for channel in (None, "msedge", "chrome"):
+        try:
+            return p.chromium.launch(**({"channel": channel} if channel else {}))
+        except playwright_sync.Error as exc:
+            problems.append("%s: %s" % (channel or "chromium", str(exc).splitlines()[0]))
+    pytest.skip("No browser for the UI tests. Run `playwright install chromium`, or install Edge or Chrome. " + " | ".join(problems))
+
+
 @pytest.fixture(scope="module")
 def browser():
     with playwright_sync.sync_playwright() as p:
-        b = p.chromium.launch()
+        b = _launch(p)
         yield b
         b.close()
 
@@ -126,10 +137,10 @@ def test_methodology_opens_in_a_new_tab_and_is_plain_language(page, base):
     guide.wait_for_selector(".doc-layout")
     assert "page=methodology" in guide.url and page.url.endswith("page=home")
     text = guide.inner_text("body")
-    for heading in ("Rio Markers", "EU Taxonomy", "The overall score", "Spending we do not count"):
+    for heading in ("Rio Markers", "EU Taxonomy", "Georgian Taxonomy", "The overall score", "Spending we do not count"):
         assert heading in text
     assert not TECHNICAL_WORDS.search(text), TECHNICAL_WORDS.search(text).group(0)
-    assert len(guide.query_selector_all(".doc-toc a")) == 10
+    assert len(guide.query_selector_all(".doc-toc a")) == 11
 
 
 def test_how_it_works_button_also_opens_a_new_tab(page, base):
@@ -168,6 +179,20 @@ def test_evaluate_table_lists_every_line_and_switches_taxonomy(page, base, fake_
     assert "Climate tag" in page.inner_text("#eval-table-eu")
 
 
+def test_evaluate_shows_the_georgian_taxonomy_with_its_own_table(page, base, fake_ai):
+    run_evaluate(page, base)
+    text = page.inner_text(".results")
+    for expected in ("Georgian Taxonomy", "Budget lines by CBT code", "Where the climate spend comes from",
+                     "Climate amount by level and CBT code", "Top sectors by climate spend, split by level"):
+        assert expected in text
+    charts_drawn(page, 20)
+    page.click(".segmented .seg-label:has-text('Georgian Taxonomy')")
+    page.wait_for_selector("#eval-table-georgia")
+    header = page.inner_text("#eval-table-georgia")
+    assert "CBT code" in header and "Climate level" in header and "Decided by" in header
+    assert page.problems == []
+
+
 def test_evaluate_download_is_an_excel_file(page, base, fake_ai, tmp_path):
     run_evaluate(page, base)
     with page.expect_download() as dl:
@@ -175,7 +200,7 @@ def test_evaluate_download_is_an_excel_file(page, base, fake_ai, tmp_path):
     target = tmp_path / "out.xlsx"
     dl.value.save_as(str(target))
     assert dl.value.suggested_filename.endswith(".xlsx")
-    assert openpyxl.load_workbook(target).sheetnames == ["About", "Summary", "Rio Markers", "EU Taxonomy"]
+    assert openpyxl.load_workbook(target).sheetnames == ["About", "Summary", "Rio Markers", "EU Taxonomy", "Georgian Taxonomy"]
 
 
 def test_evaluate_also_reads_word_files(page, base, fake_ai):

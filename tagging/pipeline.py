@@ -17,8 +17,9 @@ from utils import documents
 
 from . import lines as L
 from .eu_tagger import EUTaxonomyTagger
+from .georgia import georgia_frame, summarize_georgia
 from .metrics import rubric_score, summarize
-from .models import AIVerdict, LineText
+from .models import AIVerdict, GeoVerdict, LineText
 from .reconcile import combine_eu, combine_rio
 from .rio_tagger import RioMarkerTagger
 
@@ -42,6 +43,8 @@ class Analysis:
     eu_summary: dict[str, Any]
     stats: dict[str, Any]
     issues: list[dict[str, str]] = field(default_factory=list)
+    georgia: pd.DataFrame | None = None
+    georgia_summary: dict[str, Any] = field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -104,6 +107,19 @@ def _method_counts(df: pd.DataFrame, line_to_id: list[int]) -> dict[str, int]:
     return {C.DECIDED_LABELS[k]: int(v) for k, v in counts.items()}
 
 
+def _tag_georgia(items: list[dict[str, Any]], progress: ProgressFn,
+                 cancelled: Callable[[], bool] | None) -> tuple[dict[int, GeoVerdict], bool]:
+    """The Georgian pass. If it fails, the Rio Markers and EU Taxonomy results are kept and the user is told."""
+    def step(stage: str, detail: str = "") -> None:
+        progress(stage, "%s · %s" % (C.KIND_LABELS[C.KIND_GEO], detail) if detail else C.KIND_LABELS[C.KIND_GEO])
+    try:
+        return tasks.tag_budget_lines_georgia(items, step, cancelled), False
+    except AIError:
+        if cancelled and cancelled():
+            raise Cancelled()
+        return {}, True
+
+
 def analyse_document(data: bytes, filename: str, progress: ProgressFn,
                      cancelled: Callable[[], bool] | None = None) -> Analysis:
     started = time.time()
@@ -133,8 +149,11 @@ def analyse_document(data: bytes, filename: str, progress: ProgressFn,
         progress(C.STAGE_TAG)
         verdicts = tasks.tag_budget_lines(items, progress, cancelled)
 
+        geo_verdicts, geo_failed = _tag_georgia(items, progress, cancelled)
+
         progress(C.STAGE_CALC)
         frames = build_frames(lines, verdicts, unique, line_to_id)
+        georgia = georgia_frame(_base_frame(lines), geo_verdicts, line_to_id)
     except documents.DocumentError as exc:
         raise AnalysisError(str(exc)) from exc
     except AIError as exc:
@@ -142,7 +161,9 @@ def analyse_document(data: bytes, filename: str, progress: ProgressFn,
 
     rio, eu = frames[C.KIND_RIO], frames[C.KIND_EU]
     rio_summary, eu_summary = summarize(C.KIND_RIO, rio), summarize(C.KIND_EU, eu)
+    georgia_summary = summarize_georgia(georgia)
     n_rules_only = sum(1 for i in range(1, len(unique) + 1) if i not in verdicts)
+    n_geo_missing = sum(1 for i in range(1, len(unique) + 1) if i not in geo_verdicts)
 
     for note in doc.notes:
         issues.append({"level": "info", "message": note})
@@ -152,6 +173,12 @@ def analyse_document(data: bytes, filename: str, progress: ProgressFn,
     if n_rules_only:
         issues.append({"level": "warn", "message": "%d line(s) could not be assessed by the AI and were checked with keywords "
                        "only. They are marked in the table." % n_rules_only})
+    if geo_failed:
+        issues.append({"level": "warn", "message": "The Georgian Taxonomy could not be applied to this document. The Rio Markers "
+                       "and EU Taxonomy results are complete."})
+    elif n_geo_missing:
+        issues.append({"level": "warn", "message": "%d line(s) could not be assessed with the Georgian Taxonomy. They are shown as "
+                       "not assessed and do not count as climate spending there." % n_geo_missing})
     if not rio_summary["has_amount"]:
         issues.append({"level": "warn", "message": "No amounts could be found, so shares are based on the number of budget lines."})
     elif rio_summary["amount_lines"] < 0.6 * rio_summary["lines"]:
@@ -161,8 +188,8 @@ def analyse_document(data: bytes, filename: str, progress: ProgressFn,
     stats = {"lines": len(lines), "unique_classifications": len(unique), "seconds": round(time.time() - started, 1),
              "pages": doc.n_pages, "sections": extraction.sections, "rules_only": n_rules_only,
              "rio_methods": _method_counts(rio, line_to_id),
-             "eu_methods": _method_counts(eu, line_to_id), **{"selection_" + k: v for k, v in selection.stats.items()}}
-    return Analysis(filename, info, doc.n_pages, rio, eu, rio_summary, eu_summary, stats, issues)
+             "eu_methods": _method_counts(eu, line_to_id), "georgia_not_assessed": n_geo_missing, **{"selection_" + k: v for k, v in selection.stats.items()}}
+    return Analysis(filename, info, doc.n_pages, rio, eu, rio_summary, eu_summary, stats, issues, georgia, georgia_summary)
 
 
 # ── comparing two analysed budgets ──────────────────────────────────────────

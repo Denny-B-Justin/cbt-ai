@@ -5,6 +5,7 @@ Everything here is provider-neutral. It talks to the model only through ai.clien
 
 from __future__ import annotations
 
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -12,12 +13,12 @@ from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 
-from tagging.models import AIVerdict
+from tagging.models import AIVerdict, GeoVerdict
 from utils import constants as C
 from utils.documents import Chunk, Document, make_chunks, split_chunk
 
 from . import client, prompt
-from .schemas import DESCRIBE_SCHEMA, EXTRACT_SCHEMA, SCORE_SCHEMA, TAG_SCHEMA
+from .schemas import DESCRIBE_SCHEMA, EXTRACT_SCHEMA, GEO_TAG_SCHEMA, SCORE_SCHEMA, TAG_SCHEMA
 from .types import (AIConfigError, AIError, AIQuotaError, AIResponseError, AIServerError, Attachment, Cancelled,
                     DocInfo)
 
@@ -191,17 +192,17 @@ def _tag_batch(batch: list[dict[str, Any]], cancelled, depth: int = 0) -> dict[i
 
 
 def _run_batches(batches: list[list[dict[str, Any]]], progress: ProgressFn, cancelled, done_offset: int,
-                 total: int) -> tuple:
+                 total: int, tag_batch: Callable[..., dict[int, Any]] = _tag_batch) -> tuple:
     abort = threading.Event()
 
     def stop() -> bool:
         return abort.is_set() or bool(cancelled and cancelled())
 
-    verdicts: dict[int, AIVerdict] = {}
+    verdicts: dict[int, Any] = {}
     last_error: AIError | None = None
     done = done_offset
     with ThreadPoolExecutor(max_workers=_workers()) as pool:
-        futures = {pool.submit(_tag_batch, b, stop): b for b in batches}
+        futures = {pool.submit(tag_batch, b, stop): b for b in batches}
         try:
             for fut in as_completed(futures):
                 try:
@@ -220,22 +221,93 @@ def _run_batches(batches: list[list[dict[str, Any]]], progress: ProgressFn, canc
     return verdicts, last_error
 
 
-def tag_budget_lines(items: list[dict[str, Any]], progress: ProgressFn,
-                     cancelled: Callable[[], bool] | None = None) -> dict[int, AIVerdict]:
-    """items: dicts with id, title, ministry, description, function_code. Returns id -> verdict (missing ids = AI failed)."""
+def _tag_all(items: list[dict[str, Any]], progress: ProgressFn, cancelled, tag_batch) -> dict[int, Any]:
     size = C.TAG_BATCH_SIZE
     total = len(items)
     progress(C.STAGE_TAG, "0 of %d lines" % total)
-    verdicts, error = _run_batches([items[i:i + size] for i in range(0, total, size)], progress, cancelled, 0, total)
+    verdicts, error = _run_batches([items[i:i + size] for i in range(0, total, size)], progress, cancelled, 0, total,
+                                   tag_batch)
     missing = [it for it in items if int(it["id"]) not in verdicts]
     if missing and verdicts:                           # one more try for lines the AI skipped
         small = max(5, size // 3)
         extra, error = _run_batches([missing[i:i + small] for i in range(0, len(missing), small)], progress, cancelled,
-                                    total, total + len(missing))
+                                    total, total + len(missing), tag_batch)
         verdicts.update(extra)
     if not verdicts and items:
         raise error or AIResponseError("The AI returned no tags")
     return verdicts
+
+
+def tag_budget_lines(items: list[dict[str, Any]], progress: ProgressFn,
+                     cancelled: Callable[[], bool] | None = None) -> dict[int, AIVerdict]:
+    """items: dicts with id, title, ministry, description, function_code. Returns id -> verdict (missing ids = AI failed)."""
+    return _tag_all(items, progress, cancelled, _tag_batch)
+
+
+# ── 3b. tag the lines with the Georgian method ──────────────────────────────
+def _flag(v: Any) -> bool:
+    return v.strip().lower() in ("true", "yes", "1") if isinstance(v, str) else bool(v)
+
+
+def geo_level(v: Any) -> int:
+    """The nearest of 0, 20, 40, 70 and 100 to the number the model wrote (a tie goes to the lower level)."""
+    nums = [float(x) for x in re.findall(r"\d+(?:\.\d+)?", str(v if v is not None else ""))]
+    if not nums:
+        return 0
+    x = min(max(sum(nums) / len(nums), 0.0), 100.0)
+    return min((0,) + C.GEO_LEVELS, key=lambda level: (abs(level - x), level))
+
+
+def geo_verdict_from_row(row: dict[str, Any]) -> GeoVerdict:
+    q1, q2 = _flag(row.get("q1_ghg_related")), _flag(row.get("q2_mitigation_measure"))
+    q3, q4 = _flag(row.get("q3_climate_hazard_related")), _flag(row.get("q4_adaptation_measure"))
+    service = _flag(row.get("service_oriented"))
+    floor = _flag(row.get("livability_floor")) and not service
+    mit, ada = q1 and q2 and not service, q3 and q4 and not service
+    floor_only = floor and not (mit or ada)
+    if floor_only:
+        ada = True
+    level = geo_level(row.get("climate_level"))
+    if floor:
+        level = max(level, C.GEO_FLOOR_LEVEL)
+    # a climate-tagged line always sits in one of the four levels; any other line has none
+    level = (level or C.GEO_LEVELS[-1]) if (mit or ada) else 0
+    conf = str(row.get("confidence") or "medium").upper()
+    sector, function = row.get("sector"), row.get("function")
+    return GeoVerdict(q1_ghg_related=q1, q2_mitigation_measure=q2, q3_climate_hazard_related=q3, q4_adaptation_measure=q4,
+                      mitigation=mit, adaptation=ada, level=level, floor_only=floor_only, service_oriented=service,
+                      sector=sector if sector in C.GEO_SECTORS else "None",
+                      function=function if function in C.GEO_FUNCTIONS else "Not known",
+                      confidence=conf if conf in (C.CONF_HIGH, C.CONF_MEDIUM, C.CONF_LOW) else C.CONF_MEDIUM,
+                      rationale=_text(row.get("rationale"), 260))
+
+
+def _geo_tag_batch(batch: list[dict[str, Any]], cancelled, depth: int = 0) -> dict[int, GeoVerdict]:
+    try:
+        data = client.ask_json(prompt.GEO_TAG_SYSTEM, prompt.geo_tag_prompt(batch), GEO_TAG_SCHEMA, max_output_tokens=16384,
+                               cancelled=cancelled)
+    except AIResponseError as exc:
+        if len(batch) > 1 and depth < MAX_SPLIT_DEPTH and (exc.truncated or exc.too_long or "JSON" in str(exc)):
+            mid = len(batch) // 2
+            return {**_geo_tag_batch(batch[:mid], cancelled, depth + 1), **_geo_tag_batch(batch[mid:], cancelled, depth + 1)}
+        raise
+    rows = data.get("georgia") if isinstance(data, dict) else data
+    wanted = {int(b["id"]) for b in batch}
+    out: dict[int, GeoVerdict] = {}
+    for r in rows if isinstance(rows, list) else []:
+        try:
+            i = int(r.get("id"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if i in wanted:
+            out[i] = geo_verdict_from_row(r)
+    return out
+
+
+def tag_budget_lines_georgia(items: list[dict[str, Any]], progress: ProgressFn,
+                             cancelled: Callable[[], bool] | None = None) -> dict[int, GeoVerdict]:
+    """Same items as tag_budget_lines, judged with the Georgian handbook in calls of their own."""
+    return _tag_all(items, progress, cancelled, _geo_tag_batch)
 
 
 # ── 4. score ────────────────────────────────────────────────────────────────

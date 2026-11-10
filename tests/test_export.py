@@ -21,10 +21,10 @@ def sheet_rows(data, name):
     return [[c for c in row] for row in wb[name].iter_rows(values_only=True)]
 
 
-def test_evaluation_workbook_has_four_sheets(analyses):
+def test_evaluation_workbook_has_five_sheets(analyses):
     a, _ = analyses
     wb = openpyxl.load_workbook(io.BytesIO(export.evaluation_workbook(a)))
-    assert wb.sheetnames == ["About", "Summary", "Rio Markers", "EU Taxonomy"]
+    assert wb.sheetnames == ["About", "Summary", "Rio Markers", "EU Taxonomy", "Georgian Taxonomy"]
 
 
 def test_line_sheets_hold_every_line_with_plain_headings(analyses):
