@@ -114,3 +114,92 @@ def test_other_errors_are_not_retried(sleeps, error):
 def test_cancelled_before_the_call_never_calls(sleeps):
     with pytest.raises(Cancelled):
         call_with_retries(lambda: pytest.fail("must not run"), RateLimiter(60000), cancelled=lambda: True)
+
+
+# ── tokens per minute ───────────────────────────────────────────────────────
+@pytest.fixture
+def short_window(monkeypatch):
+    monkeypatch.setattr(ratelimit, "WINDOW_S", 0.4)
+
+
+def test_calls_within_the_token_budget_do_not_wait(short_window):
+    limiter = RateLimiter(rpm=60000, tpm=1000)
+    start = time.monotonic()
+    for _ in range(4):
+        limiter.wait(tokens=250)
+    assert time.monotonic() - start < 0.1
+
+
+def test_a_call_over_the_token_budget_waits_for_the_window_to_free(short_window):
+    limiter = RateLimiter(rpm=60000, tpm=1000)
+    start = time.monotonic()
+    limiter.wait(tokens=700)
+    limiter.wait(tokens=700)
+    assert time.monotonic() - start >= 0.38
+
+
+def test_a_call_larger_than_the_budget_still_runs_alone(short_window):
+    limiter = RateLimiter(rpm=60000, tpm=1000)
+    assert limiter.wait(tokens=5000)[1] == 1000
+    start = time.monotonic()
+    limiter.wait(tokens=10)
+    assert time.monotonic() - start >= 0.38
+
+
+def test_the_real_count_replaces_the_estimate(short_window):
+    limiter = RateLimiter(rpm=60000, tpm=1000)
+    limiter.settle(limiter.wait(tokens=900), 100)
+    start = time.monotonic()
+    limiter.wait(tokens=800)
+    assert time.monotonic() - start < 0.1
+
+
+def test_a_refused_call_gives_its_tokens_back(sleeps):
+    limiter = RateLimiter(rpm=60000, tpm=1000)
+    calls = []
+
+    def fn():
+        calls.append(1)
+        if len(calls) == 1:
+            raise AIRateLimitError("slow down", retry_after=2)
+        return "ok"
+
+    assert call_with_retries(fn, limiter, tokens=600, used=lambda: 450) == "ok"
+    assert [k for _, k in limiter._spent] == [0, 450]
+
+
+def test_a_cut_off_answer_still_counts_its_tokens(sleeps):
+    limiter = RateLimiter(rpm=60000, tpm=1000)
+
+    def fn():
+        raise AIResponseError("cut off", truncated=True)
+
+    with pytest.raises(AIResponseError):
+        call_with_retries(fn, limiter, tokens=300, used=lambda: 900)
+    assert [k for _, k in limiter._spent] == [900]
+
+
+def test_no_token_budget_means_no_token_bookkeeping():
+    limiter = RateLimiter(rpm=60000)
+    limiter.wait(tokens=10 ** 9)
+    assert not limiter._spent
+
+
+@pytest.mark.parametrize("usage, total", [
+    ({"input_tokens": 100, "output_tokens": 50, "total_tokens": 150}, 150),      # GPT
+    ({"inputTokens": 70, "outputTokens": 30, "totalTokens": 100}, 100),          # Claude
+    ({"total_input_tokens": 40, "total_output_tokens": 20}, 60),                 # Gemini
+    ({}, None), (None, None)])
+def test_each_model_familys_usage_is_read(usage, total):
+    from ai import mai_llm
+    mai_llm._usage.tokens = None
+    mai_llm._record_usage(usage)
+    assert mai_llm.last_usage() == total
+
+
+def test_the_estimate_grows_with_what_is_sent():
+    from ai.client import estimate_tokens
+    from ai.types import Attachment
+    small = estimate_tokens("sys", "x" * 300, {}, (), 1024)
+    big = estimate_tokens("sys", "x" * 30000, {}, [Attachment("application/pdf", b"0" * 60000)], 32768)
+    assert small < 1500 and big > 10000 + 1000 + 8192

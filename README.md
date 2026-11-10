@@ -75,7 +75,8 @@ All have sensible defaults; a `.env` file is read if present (see `.env.sample`)
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AI_REQUESTS_PER_MINUTE` | `8` | Global pacing across all visitors. |
+| `AI_REQUESTS_PER_MINUTE` | `3500` | Global pacing across all visitors: calls per minute. |
+| `AI_TOKENS_PER_MINUTE` | `35000` | Global token budget per minute across all visitors (`0` switches it off). Usually the tighter of the two. |
 | `AI_PARALLEL_CALLS` | `3` | Worker threads per analysis for the reading step. |
 | `MAX_UPLOAD_MB` | `50` | Per-file limit. The browser refuses files above 3× this before sending. |
 | `SESSION_IDLE_MINUTES` | `15` | A visitor with no heartbeat for this long is forgotten. |
@@ -110,7 +111,7 @@ app.py                 Dash app, layout, routing, session beacon routes
 assets/                CSS, session.js (heartbeat + pagehide beacon), logo, favicon, fonts, hero art
 ai/                    everything that talks to a model
   client.py            provider lookup, pacing, retries (provider-neutral)
-  ratelimit.py         RateLimiter (adaptive) + call_with_retries
+  ratelimit.py         RateLimiter (requests and tokens per minute, adaptive) + call_with_retries
   types.py             Attachment, DocInfo, error taxonomy, Cancelled
   mai_llm.py           the model provider: GPT, Claude or Gemini through mAI, picked by MAI_MODEL
   schemas.py           JSON schemas for the four tasks + tolerant JSON loading

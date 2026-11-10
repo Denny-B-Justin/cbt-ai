@@ -31,8 +31,13 @@ def generate_json(system: str, prompt: str, schema: dict, attachments: Sequence[
 
 ## Pacing
 
-`RateLimiter(rpm)` spaces calls at least `60/rpm` seconds apart across **all visitors** (one process-wide instance).
-Choose `AI_REQUESTS_PER_MINUTE` below the gateway's limit for the app. The default of 8 is deliberately conservative.
+`RateLimiter(rpm, tpm)` spaces calls at least `60/rpm` seconds apart and keeps the tokens of any 60 seconds within `tpm`,
+across **all visitors** (one process-wide instance). Before a call, `client.estimate_tokens` reserves a deliberately high
+guess (characters sent ÷ 3, attachments by size, plus a quarter of the output allowance); afterwards the provider's
+reported usage (`mai_llm.last_usage()`) replaces it. A refused (429) call gives its tokens back; a cut-off answer keeps
+its real count. A call larger than the whole budget waits for an empty minute and then runs alone.
+Defaults match the mAI plan (`AI_REQUESTS_PER_MINUTE=3500`, `AI_TOKENS_PER_MINUTE=35000`); with these, tokens are the
+real limit.
 
 ## The provider (`ai/mai_llm.py`)
 

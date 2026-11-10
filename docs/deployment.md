@@ -36,9 +36,10 @@ only if present and is in `.gitignore`.
   request, the decoded bytes, the parsed pages). Compare keeps both uploads per visitor until the session ends. Size the
   machine for `MAX_RUNNING_ANALYSES` of those at once.
 - CPU is small; time is dominated by model calls. A 100-page budget needs on the order of 10–40 calls (reading sections
-  plus tagging batches). At `AI_REQUESTS_PER_MINUTE=8` that is a few minutes; the loading bar says so.
-- The rate limiter is global. Ten visitors share the same requests-per-minute budget, so each waits longer. If the gateway allows
-  more headroom, raise `AI_REQUESTS_PER_MINUTE` and `AI_PARALLEL_CALLS` together.
+  plus Rio/EU and Georgian tagging batches). A reading call is roughly 10–20k tokens, so at `AI_TOKENS_PER_MINUTE=35000`
+  only one or two run per minute: tokens, not requests, set the pace. The loading bar says what is happening.
+- The rate limiter is global. Ten visitors share the same per-minute budget, so each waits longer. When the plan's token
+  limit goes up, raise `AI_TOKENS_PER_MINUTE` (and `AI_PARALLEL_CALLS`, which only helps once tokens are not the limit).
 
 ## Health and logs
 

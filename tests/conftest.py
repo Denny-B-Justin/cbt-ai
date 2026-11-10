@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SAMPLES = ROOT / "docs" / "samples"
 
 os.environ.setdefault("AI_REQUESTS_PER_MINUTE", "60000")
+os.environ.setdefault("AI_TOKENS_PER_MINUTE", "0")
 
 from ai import client  # noqa: E402
 from tests.fake_llm import FakeProvider  # noqa: E402
@@ -20,6 +21,7 @@ from utils import session  # noqa: E402
 @pytest.fixture(autouse=True)
 def _clean(monkeypatch):
     monkeypatch.setenv("AI_REQUESTS_PER_MINUTE", "60000")
+    monkeypatch.setenv("AI_TOKENS_PER_MINUTE", "0")
     monkeypatch.setenv("AI_PARALLEL_CALLS", "2")
     monkeypatch.setenv("MAI_BASE_URL", "http://127.0.0.1:9/posit-mai/conversationalai/")
     monkeypatch.setenv("MAI_ENDPOINT", "https://azapimqa.example/maifactory/openai/responses")

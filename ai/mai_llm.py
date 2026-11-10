@@ -60,6 +60,7 @@ _client_key: tuple = ()
 _output_cap: int | None = None
 _options_ok = {name: True for opts in OPTIONS.values() for name in opts}
 _warned: set[str] = set()
+_usage = threading.local()                              # tokens of the last attempt in this thread
 
 
 class _OutputLimitError(AIResponseError):
@@ -143,6 +144,33 @@ def _headers() -> dict:
     return {"X-Posit-App-Id": _env(C.ENV_CONNECT_GUID), "x-source-type": "interactive"}
 
 
+# ── tokens used ─────────────────────────────────────────────────────────────
+def _field(obj: Any, *names: str) -> Any:
+    for name in names:
+        value = obj.get(name) if isinstance(obj, dict) else getattr(obj, name, None)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value
+    return None
+
+
+def _record_usage(usage: Any) -> None:
+    """Total tokens from a GPT, Gemini or Claude usage block; nothing if the reply did not say."""
+    if usage is None:
+        return
+    total = _field(usage, "total_tokens", "totalTokens", "total_token_count")
+    if total is None:
+        parts = [_field(usage, "input_tokens", "inputTokens", "prompt_token_count", "total_input_tokens"),
+                 _field(usage, "output_tokens", "outputTokens", "candidates_token_count", "total_output_tokens")]
+        total = sum(parts) if any(p is not None for p in parts) else None
+    if total is not None:
+        _usage.tokens = int(total)
+
+
+def last_usage() -> int | None:
+    """Tokens the last call in this thread used, as the model reported them (None if unknown)."""
+    return getattr(_usage, "tokens", None)
+
+
 # ── the one entry point ─────────────────────────────────────────────────────
 def generate_json(system: str, prompt: str, schema: dict, attachments: Sequence[Attachment] = (),
                   max_output_tokens: int = 16384, temperature: float = 0.0) -> Any:
@@ -154,6 +182,7 @@ def generate_json(system: str, prompt: str, schema: dict, attachments: Sequence[
     global _output_cap
     fam = family()
     send = {GPT: _gpt, GEMINI: _gemini, CLAUDE: _claude}[fam]
+    _usage.tokens = None
     while True:
         tokens = min(max_output_tokens, _output_cap or max_output_tokens)
         try:
@@ -240,6 +269,7 @@ def _gpt(system, prompt, schema, attachments, tokens, temperature) -> Any:
     except Exception as exc:
         raise _sdk_error(exc) from exc
     log.debug("mAI usage: %s", getattr(response, "usage", None))
+    _record_usage(getattr(response, "usage", None))
     status = getattr(response, "status", "") or ""
     reason = getattr(getattr(response, "incomplete_details", None), "reason", "") or ""
     if status == "incomplete" and reason == "max_output_tokens":
@@ -281,6 +311,7 @@ def _gemini(system, prompt, schema, attachments, tokens, temperature) -> Any:
     except Exception as exc:
         raise _sdk_error(exc) from exc
     log.debug("mAI usage: %s", getattr(response, "usage", None))
+    _record_usage(getattr(response, "usage", None))
     status = str(getattr(response, "status", "") or "")
     text = (getattr(response, "output_text", None) or "").strip()
     if status in ("incomplete", "budget_exceeded"):
@@ -339,6 +370,7 @@ def _claude(system, prompt, schema, attachments, tokens, temperature) -> Any:
     except ValueError as exc:
         raise AIServerError("mAI sent a reply that is not JSON") from exc
     log.debug("mAI usage: %s", result.get("usage"))
+    _record_usage(result.get("usage"))
     reason = result.get("stopReason") or ""
     if reason == "max_tokens":
         raise AIResponseError("The answer was cut off", truncated=True)
