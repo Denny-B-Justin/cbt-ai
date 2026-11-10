@@ -68,7 +68,7 @@ def _body() -> list[Any]:
                  _callout("Think of it as a careful first reading",
                           "It saves many hours of work. But people should always check the results before using them in an official decision.")),
         _section("steps", "From document to results", _flow([
-            ("You upload a document", "A PDF or Word file that contains a budget. It can be one page or hundreds of pages."),
+            ("You upload a document", "A PDF, Word or Excel file that contains a budget. It can be one page or hundreds of pages, or a spreadsheet with any number of sheets."),
             ("We read it", "We read the text and the tables, and work out what the document is: which country, which year and which currency."),
             ("We find the budget lines", "Each programme, project or spending item becomes one budget line with its amount. "
                                          "Totals and subtotals are left out, so that no money is counted twice."),

@@ -295,3 +295,12 @@ def test_incomplete_score_answers_are_rejected(use_provider, answer):
     use_provider(Scripted(lambda k, p, a: answer))
     with pytest.raises(AIResponseError):
         tasks.score_budgets(briefs())
+
+
+def test_excel_sections_ask_the_ai_to_read_every_row():
+    from ai import prompt
+    from ai.types import DocInfo
+    text = prompt.extract_prompt("[Page 1]\nSheet: A\nR1: A: x", DocInfo(), "page 1", False, spreadsheet=True)
+    assert "Go through every row" in text and "Column names differ" in text
+    assert "Excel" not in prompt.extract_prompt("[Page 1]\nx", DocInfo(), "page 1", False)
+    assert "Translate" in prompt.EXTRACT_SYSTEM and "Translate" in prompt.DESCRIBE_SYSTEM

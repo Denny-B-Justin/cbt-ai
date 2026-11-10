@@ -31,7 +31,7 @@ def read_upload(contents: str | None, filename: str | None) -> tuple[bytes | Non
     if not contents or not filename:
         return None, None
     if not filename.lower().endswith(C.ALLOWED_SUFFIXES):
-        return None, ui.notice("error", "Please upload a PDF or a Word (.docx) file.", "This file type is not supported")
+        return None, ui.notice("error", "Please upload a PDF, a Word (.docx) or an Excel (.xlsx) file.", "This file type is not supported")
     try:
         data = base64.b64decode(contents.split(",", 1)[-1], validate=False)
     except (binascii.Error, ValueError):
@@ -85,7 +85,7 @@ def _body() -> Any:
         html.Ol(className="stepper", children=[html.Li([html.Span(str(i), className="step-n"), html.Div([html.Strong(a), html.Span(" " + b)])])
                                                 for i, (a, b) in enumerate(STEPS, start=1)]),
         html.Div(className="stack", children=[
-            ui.step_card(1, "Upload your budget", "A PDF or Word document. Budgets of any length work, from a one-page project sheet to a full national budget.", [
+            ui.step_card(1, "Upload your budget", "A PDF, Word or Excel document. Budgets of any length work, from a one-page project sheet to a full national budget.", [
                 ui.dropzone("eval-upload"),
                 html.Div(className="privacy-note", children=[ui.icon("lock"), html.Span(ui.PRIVACY_TEXT)]),
                 ui.status_slot("eval-message")]),

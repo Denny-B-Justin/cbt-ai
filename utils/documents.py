@@ -1,10 +1,11 @@
-"""Read an uploaded PDF or Word file into clean text pages and split it into sections for the AI."""
+"""Read an uploaded PDF, Word or Excel file into clean text pages and split it into sections for the AI."""
 
 from __future__ import annotations
 
 import io
 import re
 import unicodedata
+from datetime import date, datetime
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,7 @@ AMOUNT_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d{1,2}\b")
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024    # stays under the smallest per-document limit of the mAI models (Claude: 4.5 MB)
 DOCX_PAGE_CHARS = 3500
+SHEET_HEADER_SCAN_ROWS = 20                # rows at the top of a sheet searched for the column headings
 SCAN_PAGE_WEIGHT = 2600
 
 
@@ -46,7 +48,7 @@ class Chunk:
 @dataclass
 class Document:
     filename: str
-    kind: str                                  # "pdf" | "docx"
+    kind: str                                  # "pdf" | "docx" | "xlsx"
     pages: list[Page]
     pdf_bytes: bytes | None = None
     notes: list[str] = field(default_factory=list)
@@ -103,16 +105,21 @@ def _mark_page(page: Page) -> Page:
 def read_document(data: bytes, filename: str) -> Document:
     suffix = Path(filename or "").suffix.lower()
     if suffix not in C.ALLOWED_SUFFIXES:
-        raise DocumentError("Please upload a PDF or Word (.docx) file.")
+        raise DocumentError("Please upload a PDF, Word (.docx) or Excel (.xlsx) file.")
     if not data:
         raise DocumentError("The file is empty.")
     if len(data) > C.max_upload_bytes():
         raise DocumentError("This file is larger than %d MB. Please upload a smaller file or an extract." %
                             (C.max_upload_bytes() // (1024 * 1024)))
-    doc = _read_pdf(data, filename) if suffix == ".pdf" else _read_docx(data, filename)
+    if suffix == ".pdf":
+        doc = _read_pdf(data, filename)
+    elif suffix in C.EXCEL_SUFFIXES:
+        doc = _read_xlsx(data, filename)
+    else:
+        doc = _read_docx(data, filename)
     if doc.n_pages > C.MAX_PAGES:
         raise DocumentError("This document has %d pages; the limit is %d. Please upload an extract." % (doc.n_pages, C.MAX_PAGES))
-    if doc.n_chars < 80 and doc.kind == "docx":
+    if doc.n_chars < 80 and doc.kind in ("docx", "xlsx"):
         raise DocumentError("We could not find any readable text in this file.")
     if doc.kind == "pdf":
         n = sum(1 for p in doc.pages if p.scanned)
@@ -191,6 +198,84 @@ def _read_docx(data: bytes, filename: str) -> Document:
     if not pages:
         raise DocumentError("We could not find any readable text in this file.")
     return Document(filename=filename, kind="docx", pages=pages)
+
+
+def _cell_text(value) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
+    if isinstance(value, int):
+        return "{:,}".format(value)
+    if isinstance(value, float):
+        if value.is_integer():
+            return "{:,}".format(int(value))
+        return "{:,.2f}".format(value).rstrip("0").rstrip(".") if abs(value) >= 1 else "{:.6g}".format(value)
+    if isinstance(value, datetime):
+        return value.date().isoformat() if value.time() == datetime.min.time() else value.isoformat(sep=" ")
+    if isinstance(value, date):
+        return value.isoformat()
+    return " ".join(_CTRL_RE.sub(" ", unicodedata.normalize("NFKC", str(value))).split())
+
+
+def _sheet_row(number: int, values: tuple) -> str:
+    """One spreadsheet row as 'R12: A: code | B: name | D: 1,250'. Column letters keep cells aligned with the headings
+    whatever the headings are called, and empty cells are left out."""
+    from openpyxl.utils import get_column_letter
+
+    cells = ["%s: %s" % (get_column_letter(i + 1), t) for i, t in enumerate(_cell_text(v) for v in values) if t]
+    return "R%d: %s" % (number, " | ".join(cells)) if cells else ""
+
+
+def _is_header(values: tuple) -> bool:
+    filled = [v for v in values if v not in (None, "")]
+    return len(filled) >= 2 and all(isinstance(v, str) for v in filled)
+
+
+def _read_xlsx(data: bytes, filename: str) -> Document:
+    """Every row of every sheet, in order, cut into pseudo-pages. Each pseudo-page starts with the sheet name and,
+    after the first page of a sheet, repeats its heading row so the columns can still be read."""
+    import openpyxl
+
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    except Exception as exc:
+        raise DocumentError("We could not open this Excel file. Please save it as .xlsx and upload it again.") from exc
+    pages: list[Page] = []
+    try:
+        for ws in wb.worksheets:
+            if not hasattr(ws, "iter_rows"):
+                continue
+            title = "Sheet: %s" % ws.title
+            header = ""
+            buf: list[str] = []
+            size = 0
+            seen = 0
+            for number, values in enumerate(ws.iter_rows(values_only=True), start=1):
+                line = _sheet_row(number, values)
+                if not line:
+                    continue
+                seen += 1
+                if not header and seen <= SHEET_HEADER_SCAN_ROWS and _is_header(values):
+                    header = line
+                if size + len(line) > DOCX_PAGE_CHARS and buf:
+                    pages.append(Page(len(pages) + 1, "\n".join(buf)))
+                    buf = [title + " (continued)"] + (["Column headings: " + header] if header else [])
+                    size = sum(len(b) for b in buf)
+                elif not buf:
+                    buf = [title]
+                buf.append(line)
+                size += len(line)
+            if buf:
+                pages.append(Page(len(pages) + 1, "\n".join(buf)))
+    finally:
+        wb.close()
+    if not pages:
+        raise DocumentError("We could not find any filled cells in this Excel file.")
+    for p in pages:
+        _mark_page(p)
+        p.scanned = False
+    return Document(filename=filename, kind="xlsx", pages=pages)
 
 
 def _pdf_slice(pdf_bytes: bytes, first: int, last: int) -> bytes | None:

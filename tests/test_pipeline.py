@@ -97,7 +97,7 @@ def test_a_document_without_budget_lines_gives_a_clear_message(use_provider, gre
 
 
 def test_a_file_that_is_not_a_document_gives_a_clear_message(fake_ai):
-    with pytest.raises(AnalysisError, match="PDF or Word"):
+    with pytest.raises(AnalysisError, match="Excel"):
         analyse(b"hello", "notes.txt")
     with pytest.raises(AnalysisError):
         analyse(b"%PDF-1.4 this is not really a pdf", "broken.pdf")

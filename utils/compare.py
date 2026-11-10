@@ -62,7 +62,7 @@ def layout(sid: str) -> html.Div:
             html.Ol(className="stepper", children=[html.Li([html.Span(str(i), className="step-n"), html.Div([html.Strong(a), html.Span(" " + b)])])
                                                     for i, (a, b) in enumerate(STEPS, start=1)]),
             html.Div(className="stack", children=[
-                ui.step_card(1, "Add the two budgets", "PDF or Word documents. They can be project budgets or larger budgets; the two do not need to match.", [
+                ui.step_card(1, "Add the two budgets", "PDF, Word or Excel documents. They can be project budgets or larger budgets; the two do not need to match.", [
                     html.Div(className="upload-row", children=[_slot(k, sid) for k in KEYS]),
                     html.Div(className="privacy-note", children=[ui.icon("lock"), html.Span(ui.PRIVACY_TEXT)]),
                     html.Div(className="actions", children=[

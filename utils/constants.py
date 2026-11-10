@@ -61,7 +61,8 @@ def max_upload_bytes() -> int:
 
 
 # ── Documents ───────────────────────────────────────────────────────────────
-ALLOWED_SUFFIXES = (".pdf", ".docx")
+EXCEL_SUFFIXES = (".xlsx", ".xlsm")
+ALLOWED_SUFFIXES = (".pdf", ".docx") + EXCEL_SUFFIXES
 CHUNK_CHARS = 28000              # text sent to the AI per reading call
 MAX_PAGES = 600
 TABLE_PAGE_NUMBERS = 25          # a page with this many amounts is treated as a table page

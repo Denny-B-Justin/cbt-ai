@@ -138,7 +138,7 @@ def check_full(path: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--full", action="store_true", help="run a complete analysis and a comparison")
-    parser.add_argument("--file", type=Path, default=SAMPLE, help="a PDF or Word budget (default: the green sample)")
+    parser.add_argument("--file", type=Path, default=SAMPLE, help="a PDF, Word or Excel budget (default: the green sample)")
     parser.add_argument("--fake", action="store_true", help="use the built-in stand-in instead of the real service")
     args = parser.parse_args()
 

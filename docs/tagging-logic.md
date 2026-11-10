@@ -6,6 +6,11 @@
   Repeated header/footer lines are removed. A page with at least 25 amount-like numbers is flagged *table-like*; a page
   with fewer than 120 characters is flagged *scanned*.
 - **DOCX** (python-docx): paragraphs and tables in document order, cut into pseudo-pages of about 3 500 characters.
+- **XLSX / XLSM** (openpyxl, computed values): every non-empty row of every sheet, written as
+  `R12: A: code | B: name | D: 1,250` (column letters, so any column names work), cut into pseudo-pages of about
+  3 500 characters. Each pseudo-page starts with `Sheet: <name>`; continuation pages repeat the sheet's heading row
+  (first all-text row with two or more cells in the top 20 rows). The extraction prompt then adds `SPREADSHEET_NOTE`,
+  asking the AI to work out the columns itself and go through every row.
 - Notes for the user: if every page is scanned, or at least `max(3, 5 %)` of pages are, `Document.notes` gets a sentence
   that ends up in the results as an info notice.
 - Limits: `ALLOWED_SUFFIXES`, `MAX_PAGES` (600), `max_upload_bytes()`; errors are `DocumentError` with a user-safe message.

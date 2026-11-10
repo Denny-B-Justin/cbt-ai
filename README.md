@@ -1,6 +1,6 @@
 # Climate Budget Tagging Tool (AI edition)
 
-A Plotly Dash application that reads a government budget document (PDF or Word), has an LLM extract and tag every
+A Plotly Dash application that reads a government budget document (PDF, Word or Excel), has an LLM extract and tag every
 budget line against two taxonomies (**Rio Markers** and **EU Taxonomy**), computes all shares and charts deterministically
 in code, and can score and compare two budgets.
 
@@ -8,7 +8,7 @@ It succeeds the rule-based `wb-climate-budget-tagging` app (Excel/CSV in, keywor
 
 | | Previous version | This version |
 |---|---|---|
-| Input | Structured Excel/CSV | PDF or Word, any layout |
+| Input | Structured Excel/CSV | PDF, Word or Excel, any layout |
 | Reading the budget | Column mapping | LLM extracts budget lines from text and table pages |
 | Tagging | Keyword counts | LLM judgement per line, keyword taggers kept as a second opinion |
 | Storage | Databricks | None. Memory only, per visitor, deleted when the page closes |

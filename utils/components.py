@@ -116,7 +116,7 @@ def dropzone(component_id: str, title: str = "Drop a budget document here", fill
                                                 html.Span(" to replace it")], className="dropzone-hint")]
     else:
         inner = [html.Strong(title), html.Span(" or "), html.Span("browse", className="link"),
-                 html.Div("PDF or Word (.docx) · up to %d MB" % mb, className="dropzone-hint")]
+                 html.Div("PDF, Word (.docx) or Excel (.xlsx) · up to %d MB" % mb, className="dropzone-hint")]
     # No file-type filter here: a wrong file should get an explanation, not silence. The size cap only protects the browser.
     return dcc.Upload(id=component_id, multiple=False, max_size=C.UPLOAD_REJECT_FACTOR * C.max_upload_bytes(),
                       className="dropzone" + (" is-filled" if filled else ""), className_active="dropzone is-active",

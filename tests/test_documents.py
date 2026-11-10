@@ -37,7 +37,7 @@ def test_reads_a_word_file(project_docx):
 
 
 @pytest.mark.parametrize("name,data,message", [
-    ("notes.txt", b"hello", "PDF or Word"),
+    ("notes.txt", b"hello", "Excel"),
     ("empty.pdf", b"", "empty"),
     ("broken.pdf", b"%PDF-1.4 this is not a pdf", "could not open"),
     ("broken.docx", b"not a zip", "could not open"),
@@ -142,3 +142,48 @@ def test_word_files_are_cut_into_pseudo_pages(tmp_path):
     d.save(buf)
     doc = read_document(buf.getvalue(), "long.docx")
     assert doc.n_pages > 3 and all(p.number == i + 1 for i, p in enumerate(doc.pages))
+
+
+def workbook_bytes(sheets):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for name, rows in sheets.items():
+        ws = wb.create_sheet(name)
+        for row in rows:
+            ws.append(row)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_reads_every_row_of_every_sheet_of_an_excel_file():
+    data = workbook_bytes({
+        "Ministerio": [["Presupuesto 2025"], [], ["Código", "Programa", "Monto"], ["0101", "Energía solar", 1250000],
+                       ["0102", "Salud rural", 830.5]],
+        "Other": [["Item", "Value"], ["Flood defences", 42]],
+    })
+    doc = read_document(data, "budget.xlsx")
+    assert doc.kind == "xlsx"
+    text = "\n".join(p.text for p in doc.pages)
+    assert "Sheet: Ministerio" in text and "Sheet: Other" in text
+    assert "R4: A: 0101 | B: Energía solar | C: 1,250,000" in text
+    assert "R5: A: 0102 | B: Salud rural | C: 830.5" in text
+    assert "R2: A: Flood defences | B: 42" in text
+
+
+def test_long_sheets_repeat_their_headings_on_each_pseudo_page():
+    rows = [["Title of the budget"], ["Line", "Spending"]] + [["Budget line number %d with a long name" % i, i * 1000] for i in range(400)]
+    doc = read_document(workbook_bytes({"Data": rows}), "long.xlsx")
+    assert doc.n_pages > 3
+    assert all(p.text.startswith("Sheet: Data") for p in doc.pages)
+    assert all("Column headings: R2: A: Line | B: Spending" in p.text for p in doc.pages[1:])
+    text = "\n".join(p.text for p in doc.pages)
+    assert all("R%d: " % (i + 3) in text for i in range(400)), "no row is lost"
+
+
+def test_empty_or_broken_excel_files_are_rejected():
+    with pytest.raises(DocumentError, match="filled cells"):
+        read_document(workbook_bytes({"Empty": []}), "empty.xlsx")
+    with pytest.raises(DocumentError, match="could not open"):
+        read_document(b"not a zip", "broken.xlsx")
