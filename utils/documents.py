@@ -7,7 +7,7 @@ import re
 import unicodedata
 from datetime import date, datetime
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from . import constants as C
@@ -16,7 +16,9 @@ AMOUNT_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d{1,2}\b")
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024    # stays under the smallest per-document limit of the mAI models (Claude: 4.5 MB)
 DOCX_PAGE_CHARS = 3500
-SHEET_HEADER_SCAN_ROWS = 20                # rows at the top of a sheet searched for the column headings
+SHEET_HEADING_ROWS = 10                    # top rows of a sheet repeated with every later section of it
+SHEET_HEADING_CHARS = 3000
+MERGED_CELLS_MAX_BYTES = 15 * 1024 * 1024  # larger workbooks are read row by row, without merged-cell spans
 SCAN_PAGE_WEIGHT = 2600
 
 
@@ -30,6 +32,8 @@ class Page:
     text: str
     table_like: bool = False
     scanned: bool = False
+    sheet: str = ""                            # Excel only: the sheet this pseudo-page comes from
+    continued: bool = False                    # Excel only: not the first pseudo-page of its sheet
 
 
 @dataclass
@@ -52,6 +56,7 @@ class Document:
     pages: list[Page]
     pdf_bytes: bytes | None = None
     notes: list[str] = field(default_factory=list)
+    headings: dict[str, str] = field(default_factory=dict)   # Excel only: sheet name -> its top rows
 
     @property
     def n_pages(self) -> int:
@@ -218,56 +223,64 @@ def _cell_text(value) -> str:
     return " ".join(_CTRL_RE.sub(" ", unicodedata.normalize("NFKC", str(value))).split())
 
 
-def _sheet_row(number: int, values: tuple) -> str:
+def _merged_spans(ws) -> dict[tuple[int, int], int]:
+    """(row, column) of the top-left cell of each merged block that spans columns -> its last column."""
+    ranges = getattr(getattr(ws, "merged_cells", None), "ranges", ())
+    return {(r.min_row, r.min_col): r.max_col for r in ranges if r.max_col > r.min_col}
+
+
+def _sheet_row(number: int, values: tuple, spans: dict[tuple[int, int], int] | None = None) -> str:
     """One spreadsheet row as 'R12: A: code | B: name | D: 1,250'. Column letters keep cells aligned with the headings
-    whatever the headings are called, and empty cells are left out."""
+    whatever the headings are called; a merged heading is written over the columns it covers ('E-L: 2027 Forecast').
+    Empty cells are left out."""
     from openpyxl.utils import get_column_letter
 
-    cells = ["%s: %s" % (get_column_letter(i + 1), t) for i, t in enumerate(_cell_text(v) for v in values) if t]
+    cells = []
+    for i, value in enumerate(values):
+        text = _cell_text(value)
+        if not text:
+            continue
+        col = get_column_letter(i + 1)
+        last = (spans or {}).get((number, i + 1))
+        cells.append("%s-%s: %s" % (col, get_column_letter(last), text) if last else "%s: %s" % (col, text))
     return "R%d: %s" % (number, " | ".join(cells)) if cells else ""
 
 
-def _is_header(values: tuple) -> bool:
-    filled = [v for v in values if v not in (None, "")]
-    return len(filled) >= 2 and all(isinstance(v, str) for v in filled)
-
-
 def _read_xlsx(data: bytes, filename: str) -> Document:
-    """Every row of every sheet, in order, cut into pseudo-pages. Each pseudo-page starts with the sheet name and,
-    after the first page of a sheet, repeats its heading row so the columns can still be read."""
+    """Every row of every sheet, in order, cut into pseudo-pages that start with the sheet name. The top rows of each
+    sheet are kept in Document.headings so that every later section of the sheet can show its column headings again."""
     import openpyxl
 
     try:
-        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+        wb = openpyxl.load_workbook(io.BytesIO(data), read_only=len(data) > MERGED_CELLS_MAX_BYTES, data_only=True)
     except Exception as exc:
         raise DocumentError("We could not open this Excel file. Please save it as .xlsx and upload it again.") from exc
     pages: list[Page] = []
+    headings: dict[str, str] = {}
     try:
         for ws in wb.worksheets:
             if not hasattr(ws, "iter_rows"):
                 continue
-            title = "Sheet: %s" % ws.title
-            header = ""
+            spans = _merged_spans(ws)
+            top: list[str] = []
             buf: list[str] = []
             size = 0
-            seen = 0
             for number, values in enumerate(ws.iter_rows(values_only=True), start=1):
-                line = _sheet_row(number, values)
+                line = _sheet_row(number, values, spans)
                 if not line:
                     continue
-                seen += 1
-                if not header and seen <= SHEET_HEADER_SCAN_ROWS and _is_header(values):
-                    header = line
+                if len(top) < SHEET_HEADING_ROWS:
+                    top.append(line)
                 if size + len(line) > DOCX_PAGE_CHARS and buf:
-                    pages.append(Page(len(pages) + 1, "\n".join(buf)))
-                    buf = [title + " (continued)"] + (["Column headings: " + header] if header else [])
-                    size = sum(len(b) for b in buf)
+                    pages.append(Page(len(pages) + 1, "\n".join(buf), sheet=ws.title, continued=len(pages) > first))
+                    buf, size = ["Sheet: %s (continued)" % ws.title], 0
                 elif not buf:
-                    buf = [title]
+                    buf, first = ["Sheet: %s" % ws.title], len(pages)
                 buf.append(line)
                 size += len(line)
             if buf:
-                pages.append(Page(len(pages) + 1, "\n".join(buf)))
+                pages.append(Page(len(pages) + 1, "\n".join(buf), sheet=ws.title, continued=len(pages) > first))
+                headings[ws.title] = "\n".join(top)[:SHEET_HEADING_CHARS]
     finally:
         wb.close()
     if not pages:
@@ -275,7 +288,21 @@ def _read_xlsx(data: bytes, filename: str) -> Document:
     for p in pages:
         _mark_page(p)
         p.scanned = False
-    return Document(filename=filename, kind="xlsx", pages=pages)
+    return Document(filename=filename, kind="xlsx", pages=pages, headings=headings)
+
+
+def _pages_text(doc: Document, pages: list[Page]) -> str:
+    """The text of consecutive pages with their [Page N] markers. A section that starts in the middle of an Excel sheet
+    first repeats that sheet's top rows, so the AI can always tell what each column means."""
+    text = "\n".join("[Page %d]\n%s" % (p.number, p.text) for p in pages)
+    first = pages[0]
+    if first.continued and doc.headings.get(first.sheet):
+        text = _headings_block(doc, first) + "\n" + text
+    return text
+
+
+def _headings_block(doc: Document, page: Page) -> str:
+    return '<sheet_headings sheet="%s">\n%s\n</sheet_headings>' % (page.sheet, doc.headings.get(page.sheet, ""))
 
 
 def _pdf_slice(pdf_bytes: bytes, first: int, last: int) -> bytes | None:
@@ -327,7 +354,7 @@ def make_chunks(doc: Document, max_chars: int = C.CHUNK_CHARS) -> list[Chunk]:
 
     chunks: list[Chunk] = []
     for g, piece in (pair for group in groups for pair in _with_slices(doc, group)):
-        text = "\n".join("[Page %d]\n%s" % (p.number, p.text) for p in g)
+        text = _pages_text(doc, g)
         chunks.append(Chunk(len(chunks) + 1, g[0].number, g[-1].number, text, piece))
     return chunks
 
@@ -338,6 +365,15 @@ def split_chunk(chunk: Chunk, doc: Document) -> list[Chunk]:
     if len(pages) >= 2:
         mid = len(pages) // 2
         parts = [pages[:mid], pages[mid:]]
+    elif doc.kind == "xlsx":
+        # cut the rows of the one pseudo-page; each half keeps the sheet name and its headings
+        first, *rows = pages[0].text.splitlines()
+        if len(rows) < 20:
+            return []
+        mid = len(rows) // 2
+        halves = [replace(pages[0], text="\n".join([first] + rows[:mid])),
+                  replace(pages[0], text="\n".join([first] + rows[mid:]), continued=True)]
+        return [Chunk(chunk.index, chunk.first_page, chunk.last_page, _pages_text(doc, [h])) for h in halves]
     else:
         lines = chunk.text.splitlines()
         if len(lines) < 20:
@@ -347,7 +383,7 @@ def split_chunk(chunk: Chunk, doc: Document) -> list[Chunk]:
         return [Chunk(chunk.index, chunk.first_page, chunk.last_page, h, chunk.pdf_slice) for h in halves]
     out = []
     for g in parts:
-        text = "\n".join("[Page %d]\n%s" % (p.number, p.text) for p in g)
+        text = _pages_text(doc, g)
         piece = None
         if doc.kind == "pdf" and doc.pdf_bytes and any(p.table_like or p.scanned for p in g):
             piece = _pdf_slice(doc.pdf_bytes, g[0].number, g[-1].number)

@@ -35,11 +35,39 @@ EXTRACT_SYSTEM = """You read government budget documents and list their budget l
 The text you receive is an automatic extraction from a PDF, Word or Excel file and can be messy: columns may be scrambled and numbers may sit apart from their labels. Rebuild each row carefully, using order, codes and totals as clues. If a PDF is attached it shows the same pages: use it to read tables correctly.
 """ + ENGLISH + "\n" + UNTRUSTED
 
+SPREADSHEET_SYSTEM = """
+
+Excel workbooks
+Excel budgets are rarely tidy tables. Column names differ from file to file, headings often span several rows, some heading cells are cut short, repeated or empty, and every sheet can have its own layout. Do not expect a fixed schema: work out the meaning of every column yourself, separately for each sheet.
+
+How the workbook is written
+- Each [Page N] block holds rows of one sheet. Its first line names the sheet: "Sheet: <name>", or "Sheet: <name> (continued)" when the sheet started in an earlier block.
+- Each row is one line: "R<row number>: <column letter>: <value> | <column letter>: <value> | ...". Empty cells are left out, so use the column letters, not the position in the line, to match a value to its heading.
+- A merged cell is written with the columns it covers: "E-L: 2027 Forecast" is one heading over columns E to L.
+- Numbers are written with thousands separators ("4,906,000"); dates as YYYY-MM-DD.
+- When a block continues a sheet, it starts with <sheet_headings sheet="<name>">, which repeats the first rows of that sheet. Those rows are only there so you can read the columns: never return lines from them unless the same row also appears after a [Page N] marker.
+
+Work out the columns first
+1. Read the first five to ten rows of the sheet (or its <sheet_headings>). They hold the title, the unit ("thousand GEL") and the column headings.
+2. Build the full name of every column by combining the heading rows from top to bottom. Example: R1 "E-L: 2027 Forecast" above R2 "E: Total | F: Total | G: ...without co-financing | H: ...budgetary funds | ... | L: Others" means columns E to L all belong to the 2027 forecast, column E is the 2027 total and F to L split it further.
+3. When a heading is cut short or missing, use its neighbours, its position and the values below it. A column whose values equal the sum of other columns is a total; a column of short numbers such as "25 00" or "25 01 02" is a classification code; the column with long text is the title or description.
+4. Keep this column map in mind and apply it to every row of the sheet.
+
+What the numbers in a row mean
+- Typical columns are: code; a running number ("N"); title or description; one or more years (approved, revised, forecast, actual); and, within a year, a total followed by its split by funding source (state budget funds, own revenues, grants, credits or loans, co-financing, donor funds, other). For the amount use the total column of the document's budget year. The funding-source columns are parts of that total: never add them together and never turn them into separate lines.
+- If several years are shown, use the budget year of the document, not past years or later forecasts.
+- Codes show the hierarchy: in "25 00" the ministry is 25, "25 01" is a programme of it and "25 01 02" a sub-programme. A row with a code ending in "00", or a name such as "Ministry of ...", is a ministry row; use it as the ministry of the rows below it.
+- Rows that are not money are not budget lines, even though they hold numbers: for example "Number of employees (staffed)", "Number of employees (employment contract)", staff counts, physical targets, indicators, percentages or counts of beneficiaries. Skip them.
+- Text-only rows under a line (for example a longer description of the activity) belong to the line above: use them for its description.
+
+Go through every sheet and every row, one by one, and do not skip any. Each row that is a budget line becomes one line; headings, notes, unit rows, totals, subtotals and non-money rows do not."""
+
 SPREADSHEET_NOTE = """
-This section comes from an Excel workbook. Each [Page N] block holds rows of one sheet, named on its first line ("Sheet: ...").
-Every row is written as "R<row number>: <column letter>: <value> | ...", with empty cells left out. "Column headings:" repeats the sheet's heading row.
-Column names differ from file to file and the sheet may not be a standard table: work out from the headings, titles and values which column holds the name, the code, the ministry and the amount for the budget year.
-Go through every row, one by one, and do not skip any: each row that is a budget line becomes one line. Headings, notes, empty-looking rows, totals and subtotals are not budget lines."""
+This section comes from an Excel workbook. Work out what each column means from the sheet's top rows (or its <sheet_headings>) as explained in your instructions, then go through every row below, one by one."""
+
+
+def extract_system(spreadsheet: bool = False) -> str:
+    return EXTRACT_SYSTEM + SPREADSHEET_SYSTEM if spreadsheet else EXTRACT_SYSTEM
 
 
 def extract_prompt(text: str, info: DocInfo, pages_label: str, attached: bool, spreadsheet: bool = False) -> str:

@@ -301,6 +301,18 @@ def test_excel_sections_ask_the_ai_to_read_every_row():
     from ai import prompt
     from ai.types import DocInfo
     text = prompt.extract_prompt("[Page 1]\nSheet: A\nR1: A: x", DocInfo(), "page 1", False, spreadsheet=True)
-    assert "Go through every row" in text and "Column names differ" in text
-    assert "Excel" not in prompt.extract_prompt("[Page 1]\nx", DocInfo(), "page 1", False)
+    assert "Excel workbook" in text and "every row" in text
+    assert "Excel workbook" not in prompt.extract_prompt("[Page 1]\nx", DocInfo(), "page 1", False)
+    system = prompt.extract_system(spreadsheet=True)
+    assert system.startswith(prompt.EXTRACT_SYSTEM) and "Work out the columns first" in system
+    assert "Number of employees" in system and "funding-source columns" in system
+    assert prompt.extract_system() == prompt.EXTRACT_SYSTEM
     assert "Translate" in prompt.EXTRACT_SYSTEM and "Translate" in prompt.DESCRIBE_SYSTEM
+
+
+def test_excel_documents_are_read_with_the_spreadsheet_instructions(fake_ai):
+    from utils.documents import Document, Page
+    doc = Document("b.xlsx", "xlsx", [Page(1, "Sheet: A\nR1: A: Solar power programme | B: 1,200", sheet="A")])
+    tasks.extract_budget_lines(doc, DocInfo(), lambda *a: None)
+    call = next(c for c in fake_ai.calls if "lines" in c["schema"]["properties"])
+    assert "Excel workbooks" in call["system"]

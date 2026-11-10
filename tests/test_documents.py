@@ -172,14 +172,57 @@ def test_reads_every_row_of_every_sheet_of_an_excel_file():
     assert "R2: A: Flood defences | B: 42" in text
 
 
-def test_long_sheets_repeat_their_headings_on_each_pseudo_page():
-    rows = [["Title of the budget"], ["Line", "Spending"]] + [["Budget line number %d with a long name" % i, i * 1000] for i in range(400)]
-    doc = read_document(workbook_bytes({"Data": rows}), "long.xlsx")
+def test_merged_headings_show_the_columns_they_cover():
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Software Code", "N", "Description", "2027 Forecast", None, None])
+    ws.append([None, None, None, "Total", "Including Grant", "Others"])
+    ws.append(["25 00", None, "Ministry of Infrastructure of Georgia", 4906000, 42890, 0])
+    ws.merge_cells("D1:F1")
+    ws.merge_cells("A1:A2")
+    buf = io.BytesIO()
+    wb.save(buf)
+    text = read_document(buf.getvalue(), "georgia.xlsx").pages[0].text
+    assert "R1: A: Software Code | B: N | C: Description | D-F: 2027 Forecast" in text
+    assert "R2: D: Total | E: Including Grant | F: Others" in text
+    assert "R3: A: 25 00 | C: Ministry of Infrastructure of Georgia | D: 4,906,000 | E: 42,890 | F: 0" in text
+
+
+def long_sheet(n=400):
+    return [["Title of the budget"], ["Line", "Spending"]] + [["Budget line number %d with a long name" % i, i * 1000] for i in range(n)]
+
+
+def test_long_sheets_keep_every_row_and_their_top_rows():
+    doc = read_document(workbook_bytes({"Data": long_sheet(), "Second": [["Item", "Cost"], ["Rail", 5]]}), "long.xlsx")
     assert doc.n_pages > 3
-    assert all(p.text.startswith("Sheet: Data") for p in doc.pages)
-    assert all("Column headings: R2: A: Line | B: Spending" in p.text for p in doc.pages[1:])
+    assert all(p.sheet in ("Data", "Second") and p.text.startswith("Sheet: " + p.sheet) for p in doc.pages)
+    assert [p.continued for p in doc.pages if p.sheet == "Data"] == [False] + [True] * (doc.n_pages - 2)
+    assert not doc.pages[-1].continued, "a new sheet starts fresh"
+    assert doc.headings["Data"].splitlines()[:2] == ["R1: A: Title of the budget", "R2: A: Line | B: Spending"]
+    assert len(doc.headings["Data"].splitlines()) == 10
     text = "\n".join(p.text for p in doc.pages)
     assert all("R%d: " % (i + 3) in text for i in range(400)), "no row is lost"
+
+
+def test_every_section_of_a_sheet_shows_its_headings():
+    doc = read_document(workbook_bytes({"Data": long_sheet(2000)}), "long.xlsx")
+    chunks = make_chunks(doc, max_chars=8000)
+    assert len(chunks) > 2
+    assert "<sheet_headings" not in chunks[0].text and "R2: A: Line | B: Spending" in chunks[0].text
+    for c in chunks[1:]:
+        assert c.text.startswith('<sheet_headings sheet="Data">\nR1: A: Title of the budget\nR2: A: Line | B: Spending')
+        assert "[Page %d]" % c.first_page in c.text
+
+
+def test_a_long_excel_page_is_split_by_rows_with_its_headings():
+    doc = read_document(workbook_bytes({"Data": long_sheet(60)}), "short.xlsx")
+    assert doc.n_pages == 1
+    parts = split_chunk(make_chunks(doc)[0], doc)
+    assert len(parts) == 2
+    assert parts[0].text.startswith("[Page 1]\nSheet: Data\nR1:")
+    assert parts[1].text.startswith('<sheet_headings sheet="Data">') and "[Page 1]\nSheet: Data\n" in parts[1].text
+    assert "R62: " in parts[1].text and "R62: " not in parts[0].text
 
 
 def test_empty_or_broken_excel_files_are_rejected():

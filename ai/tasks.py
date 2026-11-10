@@ -80,9 +80,10 @@ def _records(data: Any, chunk: Chunk) -> list[dict[str, Any]]:
 
 def _extract_chunk(chunk: Chunk, doc: Document, info: DocInfo, cancelled, depth: int = 0) -> list[dict[str, Any]]:
     attachments = [Attachment("application/pdf", chunk.pdf_slice)] if chunk.pdf_slice else []
-    text = prompt.extract_prompt(chunk.text, info, chunk.label, bool(attachments), doc.kind == "xlsx")
+    spreadsheet = doc.kind == "xlsx"
+    text = prompt.extract_prompt(chunk.text, info, chunk.label, bool(attachments), spreadsheet)
     try:
-        data = client.ask_json(prompt.EXTRACT_SYSTEM, text, EXTRACT_SCHEMA, attachments, max_output_tokens=32768,
+        data = client.ask_json(prompt.extract_system(spreadsheet), text, EXTRACT_SCHEMA, attachments, max_output_tokens=32768,
                                cancelled=cancelled)
         return _records(data, chunk)
     except AIResponseError as exc:

@@ -55,6 +55,7 @@ class FakeProvider:
 
     def _extract(self, prompt: str) -> dict:
         body = prompt.split("<document>", 1)[1].rsplit("</document>", 1)[0]
+        body = re.sub(r"<sheet_headings[^>]*>.*?</sheet_headings>", "", body, flags=re.S)   # reference rows, not data
         page, ministry, out = 1, "", []
         for raw in body.splitlines():
             line = raw.strip()
