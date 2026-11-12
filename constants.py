@@ -34,7 +34,7 @@ MODELS = (
     Model("gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite", GEMINI),
 )
 MODELS_BY_ID = {m.id: m for m in MODELS}
-DEFAULT_MODEL = "gpt-6-luna"              # pre-selected when its provider is set up; otherwise the first one that is
+DEFAULT_MODEL = "claude-haiku-5-5"              # pre-selected when its provider is set up; otherwise the first one that is
 
 # ── Environment variables ───────────────────────────────────────────────────
 # mAI: the gateway URL, and one mai-endpoint per model provider. A provider without an endpoint is shown as
