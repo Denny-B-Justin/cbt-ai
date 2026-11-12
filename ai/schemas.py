@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from utils import constants as C
+import constants as C
 
 from .types import AIResponseError
 

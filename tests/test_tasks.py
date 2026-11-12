@@ -6,10 +6,10 @@ import threading
 import pymupdf
 import pytest
 
+import constants as C
 from ai import tasks
 from ai.types import AIConfigError, AIQuotaError, AIResponseError, AIServerError, Cancelled, DocInfo
 from tests.conftest import noop_progress
-from utils import constants as C
 from utils.documents import read_document
 
 
@@ -22,10 +22,10 @@ class Scripted:
     def is_configured(self):
         return True
 
-    def model_name(self):
-        return "scripted"
+    def available_models(self):
+        return [m.id for m in C.MODELS]
 
-    def generate_json(self, system, prompt, schema, attachments=(), max_output_tokens=0, temperature=0.0):
+    def generate_json(self, system, prompt, schema, attachments=(), max_output_tokens=0, temperature=0.0, model=None):
         kind = "tags" if "tags" in schema["properties"] else "lines" if "lines" in schema["properties"] else "budgets" if "budgets" in schema["properties"] else "describe"
         with self.lock:
             self.calls.append((kind, prompt, len(attachments)))

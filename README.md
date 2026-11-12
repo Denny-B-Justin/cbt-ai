@@ -60,13 +60,19 @@ gunicorn app:server --workers 1 --threads 8 --timeout 300 --bind 0.0.0.0:8050
 
 ### AI settings
 
-Set these in Posit Connect under **Settings → Runtime → Environment Variables**. No keys or tokens are needed.
+Set these in Posit Connect under **Settings → Runtime → Environment Variables**. No keys, tokens or model names are
+needed: people choose the AI model on the Evaluate and Compare pages, from the list in `constants.py` (`MODELS`).
 
 | Variable | Required | Meaning |
 |---|---|---|
-| `MAI_BASE_URL` | yes | Gateway URL for the environment (QA or Production), ending in `/`. |
-| `MAI_ENDPOINT` | yes | mAI endpoint of the model provider (OpenAI, Claude or Gemini). |
-| `MAI_MODEL` | no | Model to use, for example `gpt-6-luna`, `claude-haiku-5-5` or `gemini-3.8-flash`. It must belong to the same provider as `MAI_ENDPOINT`. If it is not set, the provider's default model is used. |
+| `MAI_BASE_URL` | yes | Gateway URL for the environment, ending in `/`. QA `https://apiqa2.worldbank.org/posit-mai/conversationalai/`, Production `https://api.worldbank.org/posit-mai/conversationalai/`. |
+| `MAI_OPENAI_ENDPOINT` | for ChatGPT 6 Luna, ChatGPT 5.6 Luna | `https://azapim.worldbank.org/maifactory/openai/responses` (QA: `azapimqa`). |
+| `MAI_GEMINI_ENDPOINT` | for Gemini 3.8 Flash, 3.7 Flash, 3.5 Flash Lite | `https://azapim.worldbank.org/maifactory/gemini/interactions` (QA: `azapimqa`). |
+| `MAI_CLAUDE_ENDPOINT` | for Claude Haiku 5.5 | `https://azapim.worldbank.org/maifactory/bedrock/model/us.anthropic.<model>/converse` (QA: `azapimqa`). Keep `<model>`: the app puts the chosen Claude model there. |
+
+At least one endpoint is needed. A provider without its endpoint stays in the model picker, marked "not set up", and
+cannot be chosen. Posit Connect sets `CONNECT_CONTENT_GUID` itself (sent as `X-Posit-App-Id`); never set it by hand.
+To offer another model from the gateway's allowed list, add it to `MODELS` in `constants.py`.
 
 **Note:** this works only when the app runs on Posit Connect. It does not work on a local machine.
 
@@ -76,8 +82,8 @@ All have sensible defaults; a `.env` file is read if present (see `.env.sample`)
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AI_REQUESTS_PER_MINUTE` | `3500` | Global pacing across all visitors: calls per minute. |
-| `AI_TOKENS_PER_MINUTE` | `35000` | Global token budget per minute across all visitors (`0` switches it off). Usually the tighter of the two. |
+| `AI_REQUESTS_PER_MINUTE` | `3500` | Calls per minute for each model, shared by all visitors using it. |
+| `AI_TOKENS_PER_MINUTE` | `35000` | Token budget per minute for each model, shared by all visitors using it (`0` switches it off). Usually the tighter of the two. |
 | `AI_PARALLEL_CALLS` | `3` | Worker threads per analysis for the reading step. |
 | `MAX_UPLOAD_MB` | `50` | Per-file limit. The browser refuses files above 3× this before sending. |
 | `SESSION_IDLE_MINUTES` | `15` | A visitor with no heartbeat for this long is forgotten. |
@@ -108,12 +114,14 @@ The two tabs share no state; each owns a "slot" (`evaluate`, `compare`) in the v
 
 ```
 app.py                 Dash app, layout, routing, session beacon routes
+constants.py           what the system needs: AI models (MODELS, DEFAULT_MODEL), env var names, limits, stages, method vocabulary
+page_constants.py      what only the pages need: routing, page text, loading-bar labels, colours
 assets/                CSS, session.js (heartbeat + pagehide beacon), logo, favicon, fonts, hero art
 ai/                    everything that talks to a model
   client.py            provider lookup, pacing, retries (provider-neutral)
   ratelimit.py         RateLimiter (requests and tokens per minute, adaptive) + call_with_retries
   types.py             Attachment, DocInfo, error types, Cancelled
-  mai_llm.py           the model provider: GPT, Claude or Gemini through mAI, picked by MAI_MODEL
+  mai_llm.py           the model provider: GPT, Claude or Gemini through mAI, one function per provider
   schemas.py           JSON schemas for the four tasks + tolerant JSON loading
   prompt.py            all prompts
   tasks.py             describe / extract / tag / score: the four jobs, with splitting and second passes
@@ -128,7 +136,7 @@ utils/                 one module per page plus shared helpers
   components.py, charts.py, export.py, formatting.py presentation helpers
   documents.py         PDF/DOCX reading and chunking
   session.py           in-memory sessions, uploads and background jobs
-  constants.py         names, labels, colours, limits, env var names
+  (constants.py and page_constants.py are at the top level, above)
 docs/                  developer documentation + samples/ (fictional test documents)
 tests/                 pytest suite, stand-in model, fake mAI gateway, live smoke test
 ```

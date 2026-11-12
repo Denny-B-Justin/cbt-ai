@@ -5,6 +5,8 @@ Run it on Posit Connect (for example from a Connect-hosted session): the gateway
     python tests/live_check.py                  quick check: settings, one small call, reading and tagging a sample budget
     python tests/live_check.py --full           also run a complete analysis of the sample (or of --file)
     python tests/live_check.py --file my.pdf    use your own document for the reading and tagging steps
+    python tests/live_check.py --model gemini-3.8-flash   use this model (default: the one the model picker pre-selects)
+    python tests/live_check.py --every-model    first send one small call to every model that is set up
     python tests/live_check.py --fake           run this script against the built-in stand-in (checks the script itself)
 """
 
@@ -24,6 +26,7 @@ try:
 except ImportError:
     pass
 
+import constants as C                                              # noqa: E402
 from ai import client, tasks                                       # noqa: E402
 from ai.types import AIError                                       # noqa: E402
 from tagging import pipeline                                       # noqa: E402
@@ -31,6 +34,7 @@ from utils import documents                                        # noqa: E402
 
 SAMPLE = ROOT / "docs" / "samples" / "sample_budget_green_focus.pdf"
 failures = []
+MODEL = ""                                                         # set from --model in main()
 
 
 def step(title: str):
@@ -50,18 +54,26 @@ def fail(message: str) -> None:
 def check_key() -> bool:
     t = step("mAI settings")
     if not client.is_configured():
-        fail("Set MAI_BASE_URL and MAI_ENDPOINT, and run this on Posit Connect (CONNECT_CONTENT_GUID is missing otherwise).")
+        fail("Set %s and at least one of %s, and run this on Posit Connect (%s is missing otherwise)."
+             % (C.ENV_MAI_BASE_URL, ", ".join(C.ENV_MAI_ENDPOINTS.values()), C.ENV_CONNECT_GUID))
         return False
-    prov = client.provider()
-    done(t, "provider={} model={}".format(prov.family(), prov.model_name()))
+    ready = client.available_models()
+    for m in C.MODELS:
+        print("   %-24s %s" % (m.label, "set up" if m.id in ready else "not set up (%s missing)" % C.ENV_MAI_ENDPOINTS[m.family]))
+    if MODEL not in ready:
+        fail("%s is not set up" % MODEL)
+        return False
+    done(t, "using %s" % client.model_label(MODEL))
     return True
 
 
-def check_small_call() -> bool:
-    t = step("One small call that must return JSON")
+def check_small_call(model: str = "") -> bool:
+    model = model or MODEL
+    t = step("One small call that must return JSON (%s)" % client.model_label(model))
     schema = {"type": "object", "properties": {"capital": {"type": "string"}}, "required": ["capital"]}
     try:
-        data = client.ask_json("Answer with JSON only.", "What is the capital of France?", schema, max_output_tokens=256)
+        data = client.ask_json("Answer with JSON only.", "What is the capital of France?", schema, max_output_tokens=256,
+                               model=model)
     except AIError as exc:
         fail("{}: {}".format(type(exc).__name__, exc))
         return False
@@ -74,8 +86,8 @@ def check_reading(path: Path):
     t = step("Reading the budget lines from %s" % path.name)
     try:
         doc = documents.read_document(path.read_bytes(), path.name)
-        info = tasks.describe_document(doc)
-        result = tasks.extract_budget_lines(doc, info, lambda stage, detail="": None)
+        info = tasks.describe_document(doc, model=MODEL)
+        result = tasks.extract_budget_lines(doc, info, lambda stage, detail="": None, model=MODEL)
     except (AIError, documents.DocumentError) as exc:
         fail("{}: {}".format(type(exc).__name__, exc))
         return None
@@ -95,7 +107,7 @@ def check_tagging(result) -> None:
               "function_code": r.get("function_code", "")}
              for i, r in enumerate([r for r in result.records if r.get("kind") != "total"][:15], start=1)]
     try:
-        verdicts = tasks.tag_budget_lines(items, lambda stage, detail="": None)
+        verdicts = tasks.tag_budget_lines(items, lambda stage, detail="": None, model=MODEL)
     except AIError as exc:
         fail("{}: {}".format(type(exc).__name__, exc))
         return
@@ -115,10 +127,11 @@ def check_tagging(result) -> None:
 def check_full(path: Path) -> None:
     t = step("Complete analysis of %s" % path.name)
     try:
-        a = pipeline.analyse_document(path.read_bytes(), path.name, lambda stage, detail="": print("   ... {} {}".format(stage, detail), end="\r"))
+        a = pipeline.analyse_document(path.read_bytes(), path.name, lambda stage, detail="": print("   ... {} {}".format(stage, detail), end="\r"),
+                                      model=MODEL)
         print()
         b = pipeline.analyse_document((ROOT / "docs" / "samples" / "sample_budget_traditional.pdf").read_bytes(), "traditional.pdf",
-                                      lambda stage, detail="": None) if path == SAMPLE else a
+                                      lambda stage, detail="": None, model=MODEL) if path == SAMPLE else a
         comparison = pipeline.compare_budgets(a, b)
     except (pipeline.AnalysisError, AIError) as exc:
         fail("{}: {}".format(type(exc).__name__, exc))
@@ -140,6 +153,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--full", action="store_true", help="run a complete analysis and a comparison")
     parser.add_argument("--file", type=Path, default=SAMPLE, help="a PDF, Word or Excel budget (default: the climate-focused sample)")
+    parser.add_argument("--model", choices=[m.id for m in C.MODELS], help="the model to use (default: the pre-selected one)")
+    parser.add_argument("--every-model", action="store_true", help="first send one small call to every model that is set up")
     parser.add_argument("--fake", action="store_true", help="use the built-in stand-in instead of the real service")
     args = parser.parse_args()
 
@@ -148,8 +163,13 @@ def main() -> int:
         fake = FakeProvider()
         client.provider = lambda: fake
         print("Using the stand-in AI: this only checks this script.")
-    elif not check_key():
+    global MODEL
+    MODEL = args.model or client.default_model()
+    if not args.fake and not check_key():
         return 1
+    if args.every_model and not args.fake:
+        for model in client.available_models():
+            check_small_call(model)
 
     if args.fake or check_small_call():
         result = check_reading(args.file)

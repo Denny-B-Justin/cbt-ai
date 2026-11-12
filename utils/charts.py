@@ -8,30 +8,32 @@ from typing import Any
 import numpy as np
 import plotly.graph_objects as go
 
-from . import constants as C
+import constants as C
+import page_constants as P
+
 from .formatting import fmt_int, fmt_pct, is_missing, plural
 
 _GRID = "#E4EBE6"
-_AXIS_FONT = dict(family=C.FONT_STACK, size=12, color=C.INK_SOFT)
-_HOVER = dict(bgcolor="white", font_size=13, font_family=C.FONT_STACK, align="left", bordercolor=C.LINE)
+_AXIS_FONT = dict(family=P.FONT_STACK, size=12, color=P.INK_SOFT)
+_HOVER = dict(bgcolor="white", font_size=13, font_family=P.FONT_STACK, align="left", bordercolor=P.LINE)
 
 
 def _base_layout(fig: go.Figure, height: int = 320, margin: dict[str, int] | None = None, legend: bool = False) -> go.Figure:
     fig.update_layout(
         height=height, margin=margin or dict(l=8, r=16, t=8, b=8),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family=C.FONT_STACK, size=13, color=C.INK), hoverlabel=_HOVER,
+        font=dict(family=P.FONT_STACK, size=13, color=P.INK), hoverlabel=_HOVER,
         showlegend=legend, legend=dict(orientation="h", x=0, font=_AXIS_FONT, title_text="", y=-0.18),
         bargap=0.5, uirevision="keep")
-    fig.update_xaxes(gridcolor=_GRID, zerolinecolor=C.LINE, tickfont=_AXIS_FONT, title_font=_AXIS_FONT, automargin=True)
-    fig.update_yaxes(gridcolor=_GRID, zerolinecolor=C.LINE, tickfont=_AXIS_FONT, title_font=_AXIS_FONT, automargin=True)
+    fig.update_xaxes(gridcolor=_GRID, zerolinecolor=P.LINE, tickfont=_AXIS_FONT, title_font=_AXIS_FONT, automargin=True)
+    fig.update_yaxes(gridcolor=_GRID, zerolinecolor=P.LINE, tickfont=_AXIS_FONT, title_font=_AXIS_FONT, automargin=True)
     return fig
 
 
 def empty_figure(message: str = "No data to show", height: int = 240) -> go.Figure:
     fig = go.Figure()
     fig.add_annotation(text=message, x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
-                       font=dict(size=14, color=C.INK_MUTE, family=C.FONT_STACK))
+                       font=dict(size=14, color=P.INK_MUTE, family=P.FONT_STACK))
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
     return _base_layout(fig, height)
@@ -46,7 +48,7 @@ def fig_donut(slices: Sequence[tuple[str, float, str]], unit: str = "amount", he
         labels=[l for l, _, _ in slices], values=[v for _, v, _ in slices], sort=False, direction="clockwise", hole=0.58,
         marker=dict(colors=[c for _, _, c in slices], line=dict(color="white", width=2)),
         texttemplate="%{label}<br>%{percent:.0%}", textposition="outside",
-        textfont=dict(size=12, color=C.INK, family=C.FONT_STACK),
+        textfont=dict(size=12, color=P.INK, family=P.FONT_STACK),
         hovertemplate="%%{label}<br>%%{percent:.1%%} of %s<extra></extra>" % unit))
     fig = _base_layout(fig, height, legend=True, margin=dict(l=40, r=40, t=56, b=32))
     fig.update_layout(legend=dict(orientation="h", x=0.5, xanchor="center", y=1.12, yanchor="bottom"))
@@ -59,12 +61,12 @@ def fig_compare(labels: Sequence[str], a_values: Sequence[float], b_values: Sequ
     if not labels:
         return empty_figure()
     fig = go.Figure()
-    for name, values, colour in ((names[0], a_values, C.COMPARE_COLORS["A"]), (names[1], b_values, C.COMPARE_COLORS["B"])):
+    for name, values, colour in ((names[0], a_values, P.COMPARE_COLORS["A"]), (names[1], b_values, P.COMPARE_COLORS["B"])):
         vals = [0.0 if is_missing(v) else float(v) for v in values]
         fig.add_trace(go.Bar(
             y=list(labels), x=vals, orientation="h", name=name, marker=dict(color=colour, cornerradius=4, line=dict(width=0)),
             text=[fmt_pct(v) for v in vals], textposition="outside", cliponaxis=False,
-            textfont=dict(color=C.INK, size=12, family=C.FONT_STACK), hovertemplate="%%{y}<br>%s: %%{text}<extra></extra>" % name))
+            textfont=dict(color=P.INK, size=12, family=P.FONT_STACK), hovertemplate="%%{y}<br>%s: %%{text}<extra></extra>" % name))
     top = max([float(v) for v in list(a_values) + list(b_values) if not is_missing(v)] + [0.0])
     fig.update_layout(barmode="group", bargap=0.3, bargroupgap=0.06)
     fig.update_xaxes(tickformat=".0%", title=title, range=[0, max(top * 1.2, 0.05)])
@@ -93,11 +95,11 @@ def fig_stacked_h(labels: Sequence[str], series: Sequence[tuple[str, Sequence[fl
         fig.add_trace(go.Bar(
             y=labels, x=vals, orientation="h", name=name, marker=dict(color=colour, line=dict(color="white", width=2)),
             text=[fmt_pct(v, 0) if inside and v >= 0.09 else "" for v in vals], textposition="inside", insidetextanchor="middle",
-            textfont=dict(color="white", size=11, family=C.FONT_STACK), customdata=[fmt(v) for v in vals],
+            textfont=dict(color="white", size=11, family=P.FONT_STACK), customdata=[fmt(v) for v in vals],
             hovertemplate="%%{y}<br>%s: %%{customdata}<extra></extra>" % name))
     ends = list(end_text) if end_text is not None else [fmt(t) for t in totals]
     fig.add_trace(go.Scatter(x=totals, y=labels, mode="text", text=["  " + t for t in ends], textposition="middle right",
-                             textfont=dict(color=C.INK, size=12, family=C.FONT_STACK), showlegend=False, hoverinfo="skip",
+                             textfont=dict(color=P.INK, size=12, family=P.FONT_STACK), showlegend=False, hoverinfo="skip",
                              cliponaxis=False))
     top = float(totals.max())
     fig.update_layout(barmode="stack", bargap=0.35)
@@ -123,8 +125,8 @@ def fig_level_code_heatmap(level_code: Any, value_fmt=fmt_int, height: int = 300
     text = [["%s<br>%s" % (value_fmt(v), plural(k, "line")) if k else "-" for v, k in zip(zr, nr)] for zr, nr in zip(z, n)]
     fig = go.Figure(go.Heatmap(
         z=z, x=[C.CODE_LABELS[c] for c in codes], y=[C.LEVEL_LABELS[lv] for lv in levels], text=text,
-        texttemplate="%{text}", textfont=dict(size=12, family=C.FONT_STACK), xgap=2, ygap=2, showscale=False,
-        colorscale=[[0, "#F4F0FB"], [1, C.LEVEL_COLORS[100]]], zmin=0, hovertemplate="%{y} · %{x}<br>%{text}<extra></extra>"))
+        texttemplate="%{text}", textfont=dict(size=12, family=P.FONT_STACK), xgap=2, ygap=2, showscale=False,
+        colorscale=[[0, "#F4F0FB"], [1, P.LEVEL_COLORS[100]]], zmin=0, hovertemplate="%{y} · %{x}<br>%{text}<extra></extra>"))
     fig.update_yaxes(autorange="reversed", showgrid=False)
     fig.update_xaxes(side="top", showgrid=False)
     return _base_layout(fig, height, margin=dict(l=8, r=8, t=8, b=8))

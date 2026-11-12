@@ -7,8 +7,10 @@ from typing import Any
 
 from dash import html
 
+import constants as C
+import page_constants as P
+
 from . import components as ui
-from . import constants as C
 
 SECTIONS = [("idea", "The idea in short"), ("steps", "From document to results"), ("questions", "The four guiding questions"),
             ("levels", "The four levels"), ("rules", "What counts and what does not"), ("shares", "How the shares are worked out"),
@@ -49,7 +51,7 @@ def _swatch(colour: str) -> html.Span:
 
 
 def _body() -> list[Any]:
-    codes = [[_swatch(C.CODE_COLORS[c]), C.CODE_LABELS[c]] for c in C.CBT_CODES]
+    codes = [[_swatch(P.CODE_COLORS[c]), C.CODE_LABELS[c]] for c in C.CBT_CODES]
     return [
         _section("idea", "The idea in short",
                  _p("Governments spend money on many things. Some of that spending helps to cut greenhouse gas emissions, or helps people and "
@@ -83,12 +85,12 @@ def _body() -> list[Any]:
                      [codes[0], "Q1 and Q2 are yes: the line helps to cut emissions (mitigation)."],
                      [codes[1], "Q3 and Q4 are yes: the line helps to cope with climate change (adaptation)."],
                      [codes[2], "Both of the above. The counted part is split half and half between mitigation and adaptation."],
-                     [[_swatch(C.NO_DATA_COLOR), C.NOT_TAGGED], "Neither. The line is not climate-tagged and does not count."]])),
+                     [[_swatch(P.NO_DATA_COLOR), C.NOT_TAGGED], "Neither. The line is not climate-tagged and does not count."]])),
         _section("levels", "The four levels",
                  _p("Every climate-tagged line, even one with only a small or indirect link to climate, is placed in one of four levels. "
                     "The levels are classes chosen from what the line says, not measured percentages. Lines that are not climate-tagged have no level."),
                  _table(["Level", "What it means", "How much of the line counts"],
-                        [[[_swatch(C.LEVEL_COLORS[lv]), C.LEVEL_LABELS[lv]], C.LEVEL_MEANING[lv], "%d%%" % lv] for lv in C.LEVELS]),
+                        [[[_swatch(P.LEVEL_COLORS[lv]), C.LEVEL_LABELS[lv]], P.LEVEL_MEANING[lv], "%d%%" % lv] for lv in C.LEVELS]),
                  _p("When the climate part of a line's cost is known, the closest level is used: a line where about 37% of the cost is "
                     "climate work is placed at level 40. When two levels are possible, the lower one is chosen."),
                  _callout("An example", "A line of 10 million at level 70 that is both mitigation and adaptation (CB) adds 7 million to the "

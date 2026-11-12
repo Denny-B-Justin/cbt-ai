@@ -5,10 +5,10 @@ import io
 import openpyxl
 import pytest
 
+import constants as C
 from tagging.pipeline import analyse_document, compare_budgets
 from tests.conftest import noop_progress
 from utils import compare, export
-from utils import constants as C
 
 
 @pytest.fixture

@@ -24,17 +24,18 @@ except ImportError:                                        # the .env file is op
 from dash import Dash, Input, Output, State, callback, dcc, html
 from flask import request
 
+import constants as C
+import page_constants as P
 from utils import compare, evaluate, home, methodology, session
 from utils import components as ui
-from utils import constants as C
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 app = Dash(
-    __name__, suppress_callback_exceptions=True, title=C.APP_NAME, update_title=None,
+    __name__, suppress_callback_exceptions=True, title=P.APP_NAME, update_title=None,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"},
-               {"name": "description", "content": C.APP_TAGLINE}])
+               {"name": "description", "content": P.APP_TAGLINE}])
 server = app.server
 
 app.index_string = """<!DOCTYPE html>
@@ -74,22 +75,22 @@ def serve_layout() -> html.Div:
 app.layout = serve_layout
 
 PAGE_BUILDERS: dict[str, Callable[[str], Any]] = {
-    C.PAGE_HOME: lambda sid: home.layout(),
-    C.PAGE_EVALUATE: lambda sid: evaluate.layout(),
-    C.PAGE_COMPARE: compare.layout,
-    C.PAGE_METHODOLOGY: lambda sid: methodology.layout()}
+    P.PAGE_HOME: lambda sid: home.layout(),
+    P.PAGE_EVALUATE: lambda sid: evaluate.layout(),
+    P.PAGE_COMPARE: compare.layout,
+    P.PAGE_METHODOLOGY: lambda sid: methodology.layout()}
 
 
 def not_found() -> html.Div:
     return html.Div(className="notfound", children=[
         html.H1("Page not found", className="page-title"), html.P("That page does not exist.", className="page-lede"),
-        dcc.Link("Back to the home page", href="?page=" + C.DEFAULT_PAGE, className="btn btn-primary")])
+        dcc.Link("Back to the home page", href="?page=" + P.DEFAULT_PAGE, className="btn btn-primary")])
 
 
 @callback(Output("page-content", "children"), Input("url", "search"), State("session", "data"))
 def route(search: str, sid: str):
-    page = (parse_qs((search or "").lstrip("?")).get("page") or [C.DEFAULT_PAGE])[0]
-    if page == C.PAGE_HOME:
+    page = (parse_qs((search or "").lstrip("?")).get("page") or [P.DEFAULT_PAGE])[0]
+    if page == P.PAGE_HOME:
         return ui.page_shell(page, home.layout())
     builder = PAGE_BUILDERS.get(page)
     return ui.page_shell(page, builder(sid)) if builder else ui.page_shell("", not_found())
@@ -101,7 +102,7 @@ app.clientside_callback(
         const page = new URLSearchParams(search || "").get("page") || {};
         document.title = titles[page] || {};
         return "";
-    }}""".format(json.dumps({key: "{} - {}".format(label, C.APP_NAME) for key, label, _ in C.PAGES}), json.dumps(C.DEFAULT_PAGE), json.dumps(C.APP_NAME)),
+    }}""".format(json.dumps({key: "{} - {}".format(label, P.APP_NAME) for key, label, _ in P.PAGES}), json.dumps(P.DEFAULT_PAGE), json.dumps(P.APP_NAME)),
     Output("title-sink", "children"), Input("url", "search"))
 
 

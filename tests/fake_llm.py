@@ -8,6 +8,7 @@ import time
 from collections.abc import Sequence
 from typing import Any
 
+import constants as C
 from ai.types import Attachment
 
 MITIGATION = ("solar", "wind", "insulation", "efficien", "reforestation", "planting trees", "electric", "renewable",
@@ -39,13 +40,14 @@ class FakeProvider:
     def is_configured(self) -> bool:
         return True
 
-    def model_name(self) -> str:
-        return "fake"
+    def available_models(self) -> list[str]:
+        return [m.id for m in C.MODELS]
 
     def generate_json(self, system: str, prompt: str, schema: dict, attachments: Sequence[Attachment] = (),
-                      max_output_tokens: int = 0, temperature: float = 0.0) -> Any:
+                      max_output_tokens: int = 0, temperature: float = 0.0, model: str | None = None) -> Any:
         with self.lock:
-            self.calls.append({"system": system, "prompt": prompt, "attachments": len(attachments), "schema": schema})
+            self.calls.append({"system": system, "prompt": prompt, "attachments": len(attachments), "schema": schema,
+                               "model": model})
             n = len(self.calls)
         if self.delay:
             time.sleep(self.delay)

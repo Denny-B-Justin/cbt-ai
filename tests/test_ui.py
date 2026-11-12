@@ -7,11 +7,12 @@ import time
 import openpyxl
 import pytest
 
+import constants as C
+import page_constants as P
 from ai.types import AIQuotaError
 from tests.conftest import SAMPLES
 from tests.fake_llm import FakeProvider
 from utils import components as ui
-from utils import constants as C
 from utils import session
 
 playwright_sync = pytest.importorskip("playwright.sync_api")
@@ -97,13 +98,17 @@ def run_compare(page, base):
 
 
 def visible_text(page):
-    return page.inner_text("body")
+    """The page's text without the AI model names: people choose a model by its name in the model picker."""
+    text = page.inner_text("body")
+    for m in C.MODELS:
+        text = text.replace(m.label, "")
+    return text
 
 
 # ── pages and navigation ────────────────────────────────────────────────────
 def test_home_offers_the_two_tools(page, base):
     go(page, base, "home")
-    assert page.title() == "Home - " + C.APP_NAME
+    assert page.title() == "Home - " + P.APP_NAME
     assert [a.inner_text().strip() for a in page.query_selector_all(".hero-actions a")] == ["Evaluate Budget", "Compare Budget", "How it works"]
     assert page.is_visible(".brand-mark") and "World Bank" in page.get_attribute(".footer-wb", "alt")
     assert "smarter budgets" in page.inner_text(".site-footer")
@@ -176,6 +181,28 @@ def test_evaluate_table_lists_every_line_with_its_tags(page, base, fake_ai):
     header = page.inner_text("#eval-table")
     for name in ("CBT code", "Climate level", "Climate part", "Decided by", "Why"):
         assert name in header
+
+
+@pytest.mark.parametrize("name,picker", [("evaluate", "#eval-model"), ("compare", "#compare-model")])
+def test_the_model_picker_sits_above_the_upload_and_offers_every_model(page, base, fake_ai, name, picker):
+    go(page, base, name)
+    page.wait_for_selector(picker)
+    above = page.evaluate("([p, d]) => document.querySelector(p).getBoundingClientRect().top < "
+                          "document.querySelector(d).getBoundingClientRect().top", [picker, ".dropzone"])
+    assert above and C.MODELS_BY_ID[C.DEFAULT_MODEL].label in page.inner_text(".model-picker")
+    page.click(picker)
+    for m in C.MODELS:
+        page.wait_for_selector("text=%s" % m.label)
+
+
+def test_the_chosen_model_does_the_work(page, base, fake_ai):
+    go(page, base, "evaluate")
+    page.click("#eval-model")
+    page.click("text=Gemini 3.7 Flash")
+    drop(page, "#eval-upload", GREEN)
+    page.wait_for_selector(".results", timeout=SLOW)
+    assert "tagged by Gemini 3.7 Flash" in page.inner_text(".result-head")
+    assert {c["model"] for c in fake_ai.calls} == {"gemini-3.7-flash"}
 
 
 def test_evaluate_download_is_an_excel_file(page, base, fake_ai, tmp_path):

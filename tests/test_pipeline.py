@@ -6,13 +6,13 @@ from pathlib import Path
 import pymupdf
 import pytest
 
+import constants as C
 from ai import ratelimit, tasks
 from ai.types import AIConfigError, AIQuotaError, AIResponseError, AIServerError, Cancelled
 from tagging import pipeline
 from tagging.pipeline import AnalysisError, analyse_document, brief, compare_budgets
 from tests.conftest import noop_progress
 from tests.fake_llm import FakeProvider
-from utils import constants as C
 from utils import documents
 
 
@@ -33,8 +33,8 @@ class Variant(FakeProvider):
         super().__init__(**kw)
         self.extract_hook, self.tag_hook = extract, tag
 
-    def generate_json(self, system, prompt, schema, attachments=(), max_output_tokens=0, temperature=0.0):
-        out = super().generate_json(system, prompt, schema, attachments, max_output_tokens, temperature)
+    def generate_json(self, system, prompt, schema, attachments=(), max_output_tokens=0, temperature=0.0, model=None):
+        out = super().generate_json(system, prompt, schema, attachments, max_output_tokens, temperature, model)
         if "lines" in schema["properties"] and self.extract_hook:
             return self.extract_hook(out)
         if "tags" in schema["properties"] and self.tag_hook:
@@ -116,10 +116,10 @@ def test_ai_problems_become_plain_messages(use_provider, green_pdf, error):
 
 def test_when_tagging_fails_for_every_line_the_analysis_stops(use_provider, green_pdf):
     class NoTags(FakeProvider):
-        def generate_json(self, system, prompt, schema, attachments=(), max_output_tokens=0, temperature=0.0):
+        def generate_json(self, system, prompt, schema, attachments=(), max_output_tokens=0, temperature=0.0, model=None):
             if "tags" in schema["properties"]:
                 raise AIResponseError("Empty answer")
-            return super().generate_json(system, prompt, schema, attachments, max_output_tokens, temperature)
+            return super().generate_json(system, prompt, schema, attachments, max_output_tokens, temperature, model)
 
     use_provider(NoTags())
     with pytest.raises(AnalysisError):
@@ -152,10 +152,10 @@ def test_a_section_that_cannot_be_read_is_reported_and_the_rest_is_kept(use_prov
     monkeypatch.setattr(tasks, "make_chunks", lambda doc: documents.make_chunks(doc, 700))
 
     class OneBadSection(FakeProvider):
-        def generate_json(self, system, prompt, schema, attachments=(), max_output_tokens=0, temperature=0.0):
+        def generate_json(self, system, prompt, schema, attachments=(), max_output_tokens=0, temperature=0.0, model=None):
             if "lines" in schema["properties"] and "Solar power programme" in prompt:
                 raise AIResponseError("Empty answer")
-            return super().generate_json(system, prompt, schema, attachments, max_output_tokens, temperature)
+            return super().generate_json(system, prompt, schema, attachments, max_output_tokens, temperature, model)
 
     use_provider(OneBadSection())
     a = analyse(multi_page_pdf(), "long.pdf")
@@ -282,3 +282,17 @@ REAL = os.getenv("CBT_REAL_DOCS", "")
 def test_real_documents_run_through(fake_ai, path):
     a = analyse(path.read_bytes(), path.name)
     assert a.stats["lines"] > 0 and 0 <= a.summary["climate_share"] <= 1
+
+
+# ── the AI model the user chose ─────────────────────────────────────────────
+def test_the_chosen_model_reads_tags_and_scores_everything(fake_ai, green_pdf, traditional_pdf):
+    a = analyse_document(green_pdf, "g.pdf", noop_progress, model="gemini-3.7-flash")
+    b = analyse_document(traditional_pdf, "t.pdf", noop_progress, model="gemini-3.7-flash")
+    compare_budgets(a, b)
+    assert {c["model"] for c in fake_ai.calls} == {"gemini-3.7-flash"}
+    assert a.model == "gemini-3.7-flash" and a.model_label == "Gemini 3.7 Flash"
+
+
+def test_without_a_choice_the_default_model_is_used(fake_ai, green_pdf):
+    a = analyse(green_pdf, "g.pdf")
+    assert a.model == C.DEFAULT_MODEL and {c["model"] for c in fake_ai.calls} == {C.DEFAULT_MODEL}

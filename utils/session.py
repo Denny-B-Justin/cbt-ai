@@ -13,10 +13,10 @@ from dataclasses import dataclass, field
 from collections.abc import Callable
 from typing import Any
 
+import constants as C
 from ai.types import AIError, Cancelled
 from tagging.pipeline import AnalysisError
 
-from . import constants as C
 
 log = logging.getLogger(__name__)
 

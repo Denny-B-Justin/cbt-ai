@@ -3,12 +3,12 @@
 import pandas as pd
 import pytest
 
+import constants as C
 from ai import prompt, ratelimit, tasks
 from tagging.metrics import summarize
 from tagging.tags import tagged_frame
 from tagging.pipeline import analyse_document
 from tests.conftest import noop_progress
-from utils import constants as C
 
 
 @pytest.fixture(autouse=True)

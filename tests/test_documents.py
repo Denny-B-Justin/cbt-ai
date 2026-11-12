@@ -3,7 +3,7 @@ import io
 import pymupdf
 import pytest
 
-from utils import constants as C
+import constants as C
 from utils.documents import DocumentError, make_chunks, read_document, split_chunk
 
 

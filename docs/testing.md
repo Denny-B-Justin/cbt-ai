@@ -33,7 +33,7 @@ Automated tests never touch the network. The model is replaced in two ways, so e
 | `test_tags.py` | consistent verdicts (the four levels only on tagged lines, snapping, service costs, liveable wording, Q2 without Q1), the tagging instructions, CM / CA / CB and the 50/50 split, "Not assessed" lines |
 | `test_metrics.py` | shares by amount and by lines, missing amounts, grouped tables adding up, rubric |
 | `test_ratelimit.py` | spacing, adaptive slow-down, retry schedule, give-up, cancel during back-off |
-| `test_mai_llm.py` | settings (family, default model, Claude endpoint, missing values), request shape per family (app id, mai-endpoint, schema, attachments), refused settings and output length, too-large requests, error mapping per HTTP status, no SDK retries, advised wait, unusable answers, the whole path through `ai.client` |
+| `test_mai_llm.py` | settings (offered models on the allowed list, one endpoint per provider, default model, Claude model in the endpoint path, unknown models, missing values), the chosen model reaching the gateway, request shape per family (app id, mai-endpoint, schema, attachments), refused settings and output length, too-large requests, error mapping per HTTP status, no SDK retries, advised wait, unusable answers, the whole path through `ai.client` |
 | `test_tasks.py` | the four tasks incl. split-on-truncation, missing-id second pass, fatal errors, normalisation |
 | `test_pipeline.py` | full analyses of the samples, failure messages, cancellation, comparison guard and fallback |
 | `test_session.py` | lifecycle, sweeping, job states, cancel semantics, busy limit |

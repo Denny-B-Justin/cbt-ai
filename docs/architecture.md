@@ -19,11 +19,14 @@ app.py ─────────────── Dash app, layout function, 
 
 Rules the code follows, which keep the layers replaceable:
 
-- Pages never import `ai/` except `ai.client.is_configured()` for the "not set up" message. They call `tagging.pipeline`.
+- Pages never import `ai/` except `ai.client` for the "not set up" message and the model picker (`is_configured`,
+  `available_models`, `default_model`, `model_label`). They call `tagging.pipeline`.
 - `tagging/` does not know which model is used. It receives `Verdict` objects from `ai/tasks.py`.
 - `ai/tasks.py` does not know which provider is used. It calls `ai.client.ask_json`.
-- `utils/constants.py` holds names, labels, colours, limits and env var names. Labels shown to users live there so the
-  site, the Excel files and the methodology page cannot drift apart.
+- `constants.py` (top level) holds what the system needs: the AI models, env var names, limits, processing stages and
+  the method's vocabulary (levels, CBT codes, sectors, "decided by" labels), so the site, the Excel files and the
+  methodology page cannot drift apart. `page_constants.py` holds what only the pages need: routing, page text,
+  loading-bar labels and colours. They are imported as `C` and `P`.
 
 ## Routing
 

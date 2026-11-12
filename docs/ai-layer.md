@@ -7,14 +7,25 @@ Everything that talks to a model is in `ai/`. Nothing outside it names a vendor.
 `ai/client.py` uses `ai/mai_llm.py`; a provider (the tests swap in stand-ins) needs three functions:
 
 ```python
-def is_configured() -> bool: ...
-def model_name() -> str: ...
+def is_configured() -> bool: ...                 # at least one model can be used
+def available_models() -> list[str]: ...         # ids from constants.MODELS that can be used
 def generate_json(system: str, prompt: str, schema: dict, attachments: Sequence[Attachment] = (),
-                  max_output_tokens: int = ..., temperature: float = 0.0) -> Any:
-    """ONE attempt. Return parsed JSON or raise one of the errors in ai/types.py."""
+                  max_output_tokens: int = ..., temperature: float = 0.0, model: str = ...) -> Any:
+    """ONE attempt with that model. Return parsed JSON or raise one of the errors in ai/types.py."""
 ```
 
-`ai.client.ask_json(...)` wraps it with pacing and retries (`ai/ratelimit.py`) and is the only function `ai/tasks.py` calls.
+`ai.client.ask_json(..., model=...)` wraps it with pacing and retries (`ai/ratelimit.py`) and is the only function
+`ai/tasks.py` calls. The pages use `client.available_models()`, `client.default_model()` and `client.model_label()` for
+the model picker.
+
+## Choosing the model
+
+The person using the app chooses the model in the picker above the upload box (Evaluate and Compare). The list is
+`constants.MODELS` (id, label, family), pre-selected `constants.DEFAULT_MODEL` (the first model that is set up when it is
+not). The choice travels with the job: `analyse_document(..., model)` → every task (`describe_document`,
+`extract_budget_lines`, `tag_budget_lines`, `score_budgets`) → `client.ask_json(model=...)` → the provider. A comparison
+tags both budgets and scores them with the same model. `Analysis.model` records it; the results and the Excel "About"
+sheet name it. Without a model (tests, scripts) `client.default_model()` is used.
 
 ### Errors (`ai/types.py`)
 
@@ -32,7 +43,7 @@ def generate_json(system: str, prompt: str, schema: dict, attachments: Sequence[
 ## Pacing
 
 `RateLimiter(rpm, tpm)` spaces calls at least `60/rpm` seconds apart and keeps the tokens of any 60 seconds within `tpm`,
-across **all visitors** (one process-wide instance). Before a call, `client.estimate_tokens` reserves a deliberately high
+across **all visitors**, with one limiter per model (`client.limiter(model)`), because the plan's limits are per model. Before a call, `client.estimate_tokens` reserves a deliberately high
 guess (characters sent ÷ 3, attachments by size, plus a quarter of the output allowance); afterwards the provider's
 reported usage (`mai_llm.last_usage()`) replaces it. A refused (429) call gives its tokens back; a cut-off answer keeps
 its real count. A call larger than the whole budget waits for an empty minute and then runs alone.
@@ -43,11 +54,14 @@ real limit.
 
 Every call goes through the Posit mAI Gateway; it only answers apps running on Posit Connect.
 
-- Settings: `MAI_BASE_URL` (gateway URL), `MAI_ENDPOINT` (sent as the `mai-endpoint` query parameter) and optionally
-  `MAI_MODEL`. Posit Connect's own `CONNECT_CONTENT_GUID` is sent as `X-Posit-App-Id`. No keys or tokens.
-- The model family comes from `MAI_MODEL` (`gpt-*`, `gemini-*`, `claude-*`), else from the endpoint. A model that does not
-  match the endpoint is a setup error. For Claude the model is part of the endpoint path; the provider writes `MAI_MODEL`
-  into it.
+- Settings: `MAI_BASE_URL` (gateway URL) and one `mai-endpoint` per provider: `MAI_OPENAI_ENDPOINT`,
+  `MAI_GEMINI_ENDPOINT`, `MAI_CLAUDE_ENDPOINT` (`constants.ENV_MAI_ENDPOINTS`). A model is available when the gateway URL,
+  Posit Connect's `CONNECT_CONTENT_GUID` (sent as `X-Posit-App-Id`) and its provider's endpoint are set. No keys or tokens.
+- The model's family (`constants.Model.family`) picks the endpoint and the wire format. For Claude the model is part of
+  the endpoint path: `endpoint(model)` puts `us.anthropic.<model id>` in place of `us.anthropic.<model>` (or of whatever
+  model the path holds). GPT and Gemini send the model id in the request body.
+- One SDK client per provider and settings is kept (`_clients`); refused settings and output lengths are remembered
+  per model.
 - Wire formats: GPT uses the OpenAI Responses API (openai SDK, strict `json_schema`); Gemini the Interactions API
   (google-genai SDK, `response_format`); Claude the Bedrock Converse API over httpx (one forced tool whose input schema is
   the task schema, plain JSON text accepted as a fallback). SDK retries are off; `ai/ratelimit.py` retries.

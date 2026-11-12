@@ -11,7 +11,7 @@ from typing import Any
 
 import pandas as pd
 
-from utils import constants as C
+import constants as C
 
 from .models import Verdict
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from utils import constants as C
+import constants as C
 
 from .types import DocInfo
 

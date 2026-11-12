@@ -11,12 +11,13 @@ from typing import Any
 from dash import Input, Output, State, callback, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
+import constants as C
+import page_constants as P
 from ai import client
 from tagging.metrics import NOT_GIVEN
 from tagging.pipeline import Analysis, analyse_document
 
 from . import charts, components as ui, export, session
-from . import constants as C
 from .formatting import fmt_amount, fmt_int, fmt_money, fmt_pct, plural, short_text
 
 log = logging.getLogger(__name__)
@@ -44,11 +45,25 @@ def read_upload(contents: str | None, filename: str | None) -> tuple[bytes | Non
     return data, None
 
 
-def not_ready_notice() -> html.Div | None:
-    if client.is_configured():
-        return None
-    return ui.notice("error", "The analysis service is not set up yet. Please ask the person who manages this tool to finish its set-up.",
-                     "Not available")
+def not_ready_notice(model: str | None = None) -> html.Div | None:
+    """A notice when no model, or the chosen one, can be used; None when all is well."""
+    if not client.is_configured():
+        return ui.notice("error", "The analysis service is not set up yet. Please ask the person who manages this tool to finish its set-up.",
+                         "Not available")
+    if model is not None and model not in client.available_models():
+        return ui.notice("warn", "%s is not available. Please choose another AI model." % client.model_label(model), "Choose another model")
+    return None
+
+
+def model_options() -> list[dict[str, Any]]:
+    """Every model of constants.MODELS; the ones whose provider is not set up are shown but cannot be chosen."""
+    ready = set(client.available_models())
+    return [{"label": m.label if m.id in ready else "%s (%s)" % (m.label, P.MODEL_NOT_SET_UP), "value": m.id,
+             "disabled": m.id not in ready} for m in C.MODELS]
+
+
+def model_picker(component_id: str) -> html.Div:
+    return ui.model_picker(component_id, model_options(), client.default_model())
 
 
 def loader_for(job: session.Job, hint: str = LOADER_HINT) -> html.Div:
@@ -88,6 +103,7 @@ def _body() -> Any:
                                                 for i, (a, b) in enumerate(STEPS, start=1)]),
         html.Div(className="stack", children=[
             ui.step_card(1, "Upload your budget", "A PDF, Word or Excel document. Budgets of any length work, from a one-page project sheet to a full national budget.", [
+                model_picker("eval-model"),
                 ui.dropzone("eval-upload"),
                 html.Div(className="privacy-note", children=[ui.icon("lock"), html.Span(ui.PRIVACY_TEXT)]),
                 ui.status_slot("eval-message")]),
@@ -100,7 +116,8 @@ def _body() -> Any:
 # ── results ─────────────────────────────────────────────────────────────────
 def kpi_note(a: Analysis) -> str:
     return " · ".join(p for p in (plural(a.summary["lines"], "budget line"), plural(a.pages, "page"),
-                                  "%s in total" % money(a, a.summary["total_amount"]) if a.summary["has_amount"] else "") if p)
+                                  "%s in total" % money(a, a.summary["total_amount"]) if a.summary["has_amount"] else "",
+                                  "tagged by %s" % a.model_label if a.model else "") if p)
 
 
 TOP = 12
@@ -120,7 +137,7 @@ def charts_section(a: Analysis) -> html.Div:
     vfmt = fmt_amount if by_amount else (lambda v: "%s lines" % f"{float(v):,.1f}".rstrip("0").rstrip("."))
     axis = (("Amount (%s)" % a.info.unit_text) if a.info.unit_text else "Amount") if by_amount else "Number of lines"
     unit = s["basis"]
-    mit, ada = ("Mitigation", C.MITIGATION_COLOR), ("Adaptation", C.ADAPTATION_COLOR)
+    mit, ada = ("Mitigation", P.MITIGATION_COLOR), ("Adaptation", P.ADAPTATION_COLOR)
     levels = list(C.LEVELS)
     lv = s["by_level"]
 
@@ -140,7 +157,7 @@ def charts_section(a: Analysis) -> html.Div:
     def by_level(table: Any) -> Any:
         table = table.loc[table.sum(axis=1).sort_values(ascending=False).index[:TOP]]
         table = table[table.sum(axis=1) > 0]
-        return charts.fig_stacked_h(_names(table.index), [(C.LEVEL_LABELS[L], table[L], C.LEVEL_COLORS[L]) for L in levels],
+        return charts.fig_stacked_h(_names(table.index), [(C.LEVEL_LABELS[L], table[L], P.LEVEL_COLORS[L]) for L in levels],
                                     vfmt, title=axis)
 
     ministries = _known(s["by_ministry"])
@@ -157,16 +174,16 @@ def charts_section(a: Analysis) -> html.Div:
     cards = [
         ui.chart_card("Share of the total budget", charts.fig_donut(
             [(mit[0], s["mitigation_share"], mit[1]), (ada[0], s["adaptation_share"], ada[1]),
-             ("Not counted as climate", 1.0 - (s["climate_share"] or 0.0), C.NO_DATA_COLOR)], unit),
+             ("Not counted as climate", 1.0 - (s["climate_share"] or 0.0), P.NO_DATA_COLOR)], unit),
             "Each climate-tagged line counts at its level; a line with both aims is split half and half."),
         ui.chart_card("Budget lines by CBT code", charts.fig_donut(
-            [(C.CODE_LABELS[c], s["code_lines"][c], C.CODE_COLORS[c]) for c in C.CBT_CODES]
-            + [(C.NOT_TAGGED, s["lines"] - s["tagged_lines"], C.NO_DATA_COLOR)], "lines"), "Number of lines"),
+            [(C.CODE_LABELS[c], s["code_lines"][c], P.CODE_COLORS[c]) for c in C.CBT_CODES]
+            + [(C.NOT_TAGGED, s["lines"] - s["tagged_lines"], P.NO_DATA_COLOR)], "lines"), "Number of lines"),
         ui.chart_card("Split of the climate spend", charts.fig_donut(
             [(mit[0], s["mitigation"], mit[1]), (ada[0], s["adaptation"], ada[1])], "climate spend"),
             "Climate spend: %s" % vfmt(s["climate"])),
         ui.chart_card("Where the climate spend comes from", charts.fig_donut(
-            [(C.LEVEL_LABELS[L], lv.at[L, "climate"], C.LEVEL_COLORS[L]) for L in levels], "climate spend"),
+            [(C.LEVEL_LABELS[L], lv.at[L, "climate"], P.LEVEL_COLORS[L]) for L in levels], "climate spend"),
             "Climate spend by level"),
         ui.chart_card("Climate spend by sector", charts.fig_stacked_h(_names(sectors.index), split(sectors), vfmt, title=axis)),
         ui.chart_card("Top ministries by climate spend",
@@ -178,8 +195,8 @@ def charts_section(a: Analysis) -> html.Div:
             _names(largest.index), shares(largest), pct=True, title="Share of the ministry's own budget") if len(largest) else no_ministry),
         ui.chart_card("Budget and climate part at each level", charts.fig_stacked_h(
             [C.LEVEL_LABELS[L] for L in levels],
-            [("Counted as climate", [c for _, c, _ in counted], [C.LEVEL_COLORS[L] for L in levels]),
-             ("Not counted", [b - c for _, c, b in counted], C.NO_DATA_COLOR)],
+            [("Counted as climate", [c for _, c, _ in counted], [P.LEVEL_COLORS[L] for L in levels]),
+             ("Not counted", [b - c for _, c, b in counted], P.NO_DATA_COLOR)],
             vfmt, title=axis, end_text=["%s · %s of %s" % (plural(int(lv.at[L, "lines"]), "line"), vfmt(c), vfmt(b)) for L, c, b in counted])),
         ui.chart_card("Climate amount by level and CBT code", charts.fig_level_code_heatmap(s["level_code"], vfmt)),
         ui.chart_card("Mitigation and adaptation share by level", composition(clim_levels.set_axis([C.LEVEL_LABELS[L] for L in clim_levels.index]))),
@@ -189,16 +206,16 @@ def charts_section(a: Analysis) -> html.Div:
                       by_level(_known(s["ministry_levels"])) if len(spenders) else no_ministry),
         ui.chart_card("Top sectors by climate spend, split by level", by_level(s["sector_levels"])),
         ui.chart_card("How each tag was decided (lines)", charts.fig_stacked_h(
-            _names(methods.index, 50), [("Lines", methods["lines"], C.METHOD_COLOR)], fmt_int, title="Budget lines")),
+            _names(methods.index, 50), [("Lines", methods["lines"], P.METHOD_COLOR)], fmt_int, title="Budget lines")),
         ui.chart_card("How each tag was decided (%s)" % ("amount" if by_amount else "weight"), charts.fig_stacked_h(
-            _names(methods.index, 50), [("Budget", methods["budget"], C.METHOD_COLOR)], vfmt, title=axis))]
+            _names(methods.index, 50), [("Budget", methods["budget"], P.METHOD_COLOR)], vfmt, title=axis))]
 
     floor = s["floor_lines"].head(10)
     if len(floor):
         cards.append(ui.chart_card(
             "Lines counted only for liveable or habitable wording", charts.fig_stacked_h(
-                _names(floor["programme"], 60), [("Counted as climate (%d%%)" % C.FLOOR_LEVEL, floor["climate"], C.ADAPTATION_COLOR),
-                                                 ("Not counted", floor["budget"] - floor["climate"], C.NO_DATA_COLOR)], vfmt, title=axis),
+                _names(floor["programme"], 60), [("Counted as climate (%d%%)" % C.FLOOR_LEVEL, floor["climate"], P.ADAPTATION_COLOR),
+                                                 ("Not counted", floor["budget"] - floor["climate"], P.NO_DATA_COLOR)], vfmt, title=axis),
             "%s, %s counted as adaptation" % (plural(len(s["floor_lines"]), "line"), vfmt(s["floor_lines"]["climate"].sum())),
             cls="chart-wide"))
 
@@ -221,7 +238,7 @@ def lines_table(a: Analysis) -> html.Div:
     columns = [{"name": c, "id": c, **({"type": "numeric", "format": {"specifier": ",.1f"}} if c == amount_col or c.endswith(" part") else {})}
                for c in df.columns]
     rules = [{"if": {"filter_query": '{CBT code} contains "%s"' % code, "column_id": "CBT code"}, "color": colour, "fontWeight": "600"}
-             for code, colour in C.CODE_COLORS.items()]
+             for code, colour in P.CODE_COLORS.items()]
     return html.Div([html.Div("The largest lines come first. Use the boxes under the headings to search, or click a heading to sort.", className="table-note"),
                      ui.data_table(df, "eval-table", columns, conditional=rules)])
 
@@ -242,25 +259,26 @@ def results_view(a: Analysis) -> html.Div:
 
 
 # ── callbacks ───────────────────────────────────────────────────────────────
-def _work(data: bytes, filename: str) -> session.Work:
-    return lambda progress, cancelled: analyse_document(data, filename, progress, cancelled)
+def _work(data: bytes, filename: str, model: str) -> session.Work:
+    return lambda progress, cancelled: analyse_document(data, filename, progress, cancelled, model)
 
 
 @callback(Output("eval-message", "children"), Output("eval-job", "data"),
           Input("eval-upload", "contents"), Input("eval-cancel", "n_clicks"),
-          State("eval-upload", "filename"), State("session", "data"), prevent_initial_call=True)
-def start_or_stop(contents: str | None, _cancel: int, filename: str | None, sid: str):
+          State("eval-upload", "filename"), State("eval-model", "value"), State("session", "data"), prevent_initial_call=True)
+def start_or_stop(contents: str | None, _cancel: int, filename: str | None, model: str | None, sid: str):
     if ctx.triggered_id == "eval-cancel":
         session.cancel_job(sid, SLOT)
         return ui.token(), {"t": time.time()}
     if not contents:
         raise PreventUpdate
-    problem = not_ready_notice()
+    model = model or client.default_model()
+    problem = not_ready_notice(model)
     data, error = (None, problem) if problem else read_upload(contents, filename)
     if error is not None or data is None:
         return error, no_update
     try:
-        session.start_job(sid, SLOT, _work(data, filename or "document"))
+        session.start_job(sid, SLOT, _work(data, filename or "document", model))
     except session.Busy:
         return ui.notice("warn", session.BUSY_ERROR, "Please wait a moment"), no_update
     return ui.token(), {"t": time.time()}

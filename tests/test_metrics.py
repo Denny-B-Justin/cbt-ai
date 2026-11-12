@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import constants as C
 from tagging.metrics import rubric_score, summarize
 from tagging.tags import tag_row
 from tagging.models import Verdict
-from utils import constants as C
 
 
 def frame(amounts, verdicts, ministries=None, sectors=None):

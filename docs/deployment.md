@@ -17,7 +17,8 @@ outside the request.
 
 ## Settings
 
-Provide environment variables (see README): `MAI_BASE_URL`, `MAI_ENDPOINT` and optionally `MAI_MODEL`, set in Posit Connect. No secrets are needed. `.env` is read
+Provide environment variables (see README and `.env.sample`): `MAI_BASE_URL` and the endpoint of each model provider to
+offer (`MAI_OPENAI_ENDPOINT`, `MAI_GEMINI_ENDPOINT`, `MAI_CLAUDE_ENDPOINT`), set in Posit Connect. No secrets or model names are needed. `.env` is read
 only if present and is in `.gitignore`.
 
 ## Reverse proxy
@@ -38,7 +39,7 @@ only if present and is in `.gitignore`.
 - CPU is small; time is dominated by model calls. A 100-page budget needs on the order of 10–40 calls (reading sections
   plus tagging batches). A reading call is roughly 10–20k tokens, so at `AI_TOKENS_PER_MINUTE=35000`
   only one or two run per minute: tokens, not requests, set the pace. The loading bar says what is happening.
-- The rate limiter is global. Ten visitors share the same per-minute budget, so each waits longer. When the plan's token
+- There is one rate limiter per model. Ten visitors using the same model share its per-minute budget, so each waits longer. When the plan's token
   limit goes up, raise `AI_TOKENS_PER_MINUTE` (and `AI_PARALLEL_CALLS`, which only helps once tokens are not the limit).
 
 ## Health and logs

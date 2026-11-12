@@ -10,9 +10,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ai import tasks
+import constants as C
+from ai import client, tasks
 from ai.types import AIConfigError, AIError, AIQuotaError, Cancelled, DocInfo
-from utils import constants as C
 from utils import documents
 
 from . import lines as L
@@ -37,10 +37,15 @@ class Analysis:
     summary: dict[str, Any]             # metrics.summarize
     stats: dict[str, Any]
     issues: list[dict[str, str]] = field(default_factory=list)
+    model: str = ""                     # the AI model that read and tagged the document (a constants.MODELS id)
 
     @property
     def name(self) -> str:
         return self.info.name or self.filename
+
+    @property
+    def model_label(self) -> str:
+        return client.model_label(self.model)
 
     @property
     def subtitle(self) -> str:
@@ -74,13 +79,15 @@ def _base_frame(lines: list[L.Line]) -> pd.DataFrame:
 
 
 def analyse_document(data: bytes, filename: str, progress: ProgressFn,
-                     cancelled: Callable[[], bool] | None = None) -> Analysis:
+                     cancelled: Callable[[], bool] | None = None, model: str | None = None) -> Analysis:
+    """model: the constants.MODELS id the user chose; None uses the default model."""
     started = time.time()
+    model = model or client.default_model()
     try:
         progress(C.STAGE_READ)
         doc = documents.read_document(data, filename)
-        info = tasks.describe_document(doc, cancelled)
-        extraction = tasks.extract_budget_lines(doc, info, progress, cancelled)
+        info = tasks.describe_document(doc, cancelled, model)
+        extraction = tasks.extract_budget_lines(doc, info, progress, cancelled, model)
         if cancelled and cancelled():
             raise Cancelled()
 
@@ -100,7 +107,7 @@ def analyse_document(data: bytes, filename: str, progress: ProgressFn,
         items = [{"id": i, "title": ln.title, "ministry": ln.ministry, "description": ln.description,
                   "function_code": ln.function_code} for i, ln in enumerate(unique, start=1)]
         progress(C.STAGE_TAG)
-        verdicts = tasks.tag_budget_lines(items, progress, cancelled)
+        verdicts = tasks.tag_budget_lines(items, progress, cancelled, model)
 
         progress(C.STAGE_CALC)
         df = tagged_frame(_base_frame(lines), verdicts, line_to_id)
@@ -129,7 +136,7 @@ def analyse_document(data: bytes, filename: str, progress: ProgressFn,
     stats = {"lines": len(lines), "unique_classifications": len(unique), "seconds": round(time.time() - started, 1),
              "pages": doc.n_pages, "sections": extraction.sections, "not_assessed": not_assessed,
              **{"selection_" + k: v for k, v in selection.stats.items()}}
-    return Analysis(filename, info, doc.n_pages, df, summary, stats, issues)
+    return Analysis(filename, info, doc.n_pages, df, summary, stats, issues, model)
 
 
 # ── comparing two analysed budgets ──────────────────────────────────────────
@@ -167,13 +174,14 @@ def _fallback_reason(a: Analysis) -> str:
 
 
 def compare_budgets(a: Analysis, b: Analysis, cancelled: Callable[[], bool] | None = None) -> Comparison:
+    """Scored by the model that tagged budget A (both budgets of a comparison are tagged by the same model)."""
     items = {"A": a, "B": b}
     rubric = {k: rubric_score(v.summary) for k, v in items.items()}
     scores = {k: rubric[k]["score"] for k in items}
     reasons = {k: _fallback_reason(v) for k, v in items.items()}
     summary = ""
     try:
-        result = tasks.score_budgets([brief(a, "A"), brief(b, "B")], cancelled)
+        result = tasks.score_budgets([brief(a, "A"), brief(b, "B")], cancelled, a.model or None)
         for k in items:
             ai_score, reason = result["scores"][k]
             guard = rubric[k]["score"]

@@ -8,9 +8,9 @@ from typing import Any
 
 import pandas as pd
 
+import constants as C
 from tagging.pipeline import Analysis, Comparison
 
-from . import constants as C
 from .formatting import fmt_pct
 
 NO_VALUE = "-"
@@ -65,7 +65,7 @@ def _fit(writer: pd.ExcelWriter) -> None:
 
 
 def _about(a: Analysis) -> list[list[Any]]:
-    return [["Document", a.name], ["Method", C.METHOD_SOURCE], ["Country", a.info.country or NO_VALUE], ["Year", a.info.year or NO_VALUE],
+    return [["Document", a.name], ["Method", C.METHOD_SOURCE], ["AI model", a.model_label or NO_VALUE], ["Country", a.info.country or NO_VALUE], ["Year", a.info.year or NO_VALUE],
             ["Currency and unit", a.info.unit_text or NO_VALUE], ["Pages read", a.pages],
             ["Prepared on", datetime.now(timezone.utc).strftime("%d %b %Y")],
             ["Note", "Tags are produced with the help of AI and should be reviewed before they are used."]]

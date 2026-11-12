@@ -7,7 +7,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from utils import constants as C
+import constants as C
+
 
 NOT_GIVEN = "Not given"
 HIGH_LEVELS = (100, 70)              # climate is what the line is about, or most of it

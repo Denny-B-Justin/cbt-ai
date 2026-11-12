@@ -9,7 +9,9 @@ from typing import Any
 import pandas as pd
 from dash import dash_table, dcc, get_asset_url, html
 
-from . import constants as C
+import constants as C
+import page_constants as P
+
 
 GRAPH_CONFIG = {"displayModeBar": False, "responsive": True}
 FOOTER_TEXT = "A World Bank initiative promoting digital tools for smarter budgets."
@@ -29,15 +31,15 @@ def icon(name: str) -> html.Span:
 # ── page frame ──────────────────────────────────────────────────────────────
 def header(current: str) -> html.Header:
     links = []
-    for key, label, href in C.PAGES:
+    for key, label, href in P.PAGES:
         cls = "nav-link" + (" is-current" if key == current else "")
-        if key == C.PAGE_METHODOLOGY:
+        if key == P.PAGE_METHODOLOGY:
             links.append(html.A([label, icon("external")], href=href, target="_blank", rel="noopener", className=cls))
         else:
             links.append(dcc.Link(label, href=href, className=cls))
     return html.Header(className="app-header", children=html.Div(className="app-header-inner", children=[
         dcc.Link([html.Img(src=get_asset_url("cbt_logo.svg"), className="brand-mark", alt=""),
-                  html.Span(C.APP_NAME, className="header-name")], href="?page=" + C.DEFAULT_PAGE, className="header-brand"),
+                  html.Span(P.APP_NAME, className="header-name")], href="?page=" + P.DEFAULT_PAGE, className="header-brand"),
         html.Nav(className="header-nav", **{"aria-label": "Main"}, children=links)]))
 
 
@@ -108,7 +110,16 @@ def chart_card(title: str, fig: Any, hint: str | None = None, cls: str = "") -> 
         html.H3(title, className="card-title"), html.P(hint, className="card-hint") if hint else None, graph(fig)])
 
 
-# ── upload and loading ──────────────────────────────────────────────────────
+# ── model picker, upload and loading ────────────────────────────────────────
+def model_picker(component_id: str, options: list[dict[str, Any]], value: str | None) -> html.Div:
+    """The AI model that will read and tag the budget. options: {"label", "value", "disabled"} per model."""
+    return html.Div(className="model-picker", children=[
+        html.Label(P.MODEL_PICKER_LABEL, htmlFor=component_id, className="model-picker-label"),
+        dcc.Dropdown(id=component_id, options=options, value=value, clearable=False, searchable=False,
+                     className="model-picker-select"),
+        html.Div(P.MODEL_PICKER_HINT, className="model-picker-hint")])
+
+
 def dropzone(component_id: str, title: str = "Drop a budget document here", filled: str | None = None) -> dcc.Upload:
     mb = C.max_upload_bytes() // (1024 * 1024)
     if filled:
@@ -118,7 +129,7 @@ def dropzone(component_id: str, title: str = "Drop a budget document here", fill
         inner = [html.Strong(title), html.Span(" or "), html.Span("browse", className="link"),
                  html.Div("PDF, Word (.docx) or Excel (.xlsx) · up to %d MB" % mb, className="dropzone-hint")]
     # No file-type filter here: a wrong file should get an explanation, not silence. The size cap only protects the browser.
-    return dcc.Upload(id=component_id, multiple=False, max_size=C.UPLOAD_REJECT_FACTOR * C.max_upload_bytes(),
+    return dcc.Upload(id=component_id, multiple=False, max_size=P.UPLOAD_REJECT_FACTOR * C.max_upload_bytes(),
                       className="dropzone" + (" is-filled" if filled else ""), className_active="dropzone is-active",
                       children=html.Div(className="dropzone-inner", children=inner))
 
@@ -127,7 +138,7 @@ def loader(stage: str, detail: str = "", hint: str = "") -> html.Div:
     """A small bar that keeps sweeping from side to side until the work is done. It shows the step, not a percentage."""
     return html.Div(className="loader", role="status", **{"aria-live": "polite"}, children=[
         html.Div(className="loader-top", children=[
-            html.Span(C.STAGE_LABELS.get(stage, stage) + "…", className="loader-stage"),
+            html.Span(P.STAGE_LABELS.get(stage, stage) + "…", className="loader-stage"),
             html.Span(detail, className="loader-detail")]),
         html.Div(className="loader-track", children=html.Div(className="loader-bar")),
         html.Div(hint, className="loader-hint") if hint else None])
@@ -141,7 +152,7 @@ def status_slot(slot_id: str, children: Any = None) -> dcc.Loading:
 
 # ── tables ──────────────────────────────────────────────────────────────────
 def data_table(df: pd.DataFrame, table_id: str, columns: list[dict[str, Any]] | None = None,
-               page_size: int = C.RESULT_TABLE_PAGE_SIZE, conditional: list[dict[str, Any]] | None = None) -> dash_table.DataTable:
+               page_size: int = P.RESULT_TABLE_PAGE_SIZE, conditional: list[dict[str, Any]] | None = None) -> dash_table.DataTable:
     data = df.astype(object).where(df.notna(), None)
     cols = columns or [{"name": c, "id": c} for c in data.columns]
     records = data.to_dict("records")
@@ -150,9 +161,9 @@ def data_table(df: pd.DataFrame, table_id: str, columns: list[dict[str, Any]] | 
         filter_action="native", filter_options={"placeholder_text": "Filter"}, cell_selectable=False, style_as_list_view=True,
         style_cell_conditional=[{"if": {"column_id": c}, "width": "72px", "minWidth": "72px"} for c in ("Line", "Page")],
         style_table={"overflowX": "auto"},
-        style_header={"fontFamily": C.FONT_STACK, "fontWeight": "600", "backgroundColor": "#F3F7F4", "color": C.INK, "border": "0",
-                      "borderBottom": "1px solid " + C.LINE, "fontSize": "12px"},
-        style_cell={"fontFamily": C.FONT_STACK, "fontSize": "13px", "color": C.INK, "padding": "8px 10px", "textAlign": "left",
+        style_header={"fontFamily": P.FONT_STACK, "fontWeight": "600", "backgroundColor": "#F3F7F4", "color": P.INK, "border": "0",
+                      "borderBottom": "1px solid " + P.LINE, "fontSize": "12px"},
+        style_cell={"fontFamily": P.FONT_STACK, "fontSize": "13px", "color": P.INK, "padding": "8px 10px", "textAlign": "left",
                     "border": "0", "borderBottom": "1px solid #E4EBE6", "maxWidth": "320px", "overflow": "hidden",
                     "textOverflow": "ellipsis", "whiteSpace": "nowrap", "backgroundColor": "white"},
         style_data_conditional=list(conditional or []) + [{"if": {"state": "active"}, "backgroundColor": "#EDF4EF", "border": "0"}],

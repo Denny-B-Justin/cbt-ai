@@ -10,11 +10,12 @@ from typing import Any
 from dash import Input, Output, State, callback, ctx, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
+import constants as C
+from ai import client
 from tagging.pipeline import Analysis, AnalysisError, Comparison, analyse_document, compare_budgets
 
 from . import charts, components as ui, export, session
-from . import constants as C
-from .evaluate import job_notice, loader_for, money, not_ready_notice, read_upload
+from .evaluate import job_notice, loader_for, model_picker, money, not_ready_notice, read_upload
 from .formatting import fmt_int, fmt_pct
 
 log = logging.getLogger(__name__)
@@ -63,6 +64,7 @@ def layout(sid: str) -> html.Div:
                                                     for i, (a, b) in enumerate(STEPS, start=1)]),
             html.Div(className="stack", children=[
                 ui.step_card(1, "Add the two budgets", "PDF, Word or Excel documents. They can be project budgets or larger budgets; the two do not need to match.", [
+                    model_picker("compare-model"),
                     html.Div(className="upload-row", children=[_slot(k, sid) for k in KEYS]),
                     html.Div(className="privacy-note", children=[ui.icon("lock"), html.Span(ui.PRIVACY_TEXT)]),
                     html.Div(className="actions", children=[
@@ -164,7 +166,7 @@ def results_view(result: dict[str, Any]) -> html.Div:
     return html.Div(className="results", children=[
         html.Div(className="result-head", children=[
             html.Div([html.H3("Budget A and Budget B side by side", className="result-title"),
-                      html.Div("{} and {}".format(a.name, b.name), className="muted")]),
+                      html.Div("{} and {} · tagged by {}".format(a.name, b.name, a.model_label), className="muted")]),
             html.Button("Download comparison (.xlsx)", id="compare-download-btn", n_clicks=0, className="btn btn-outline")]),
         *notes,
         ui.notice("info", comparison.summary, "In short") if comparison.summary else None,
@@ -198,14 +200,14 @@ for _key in KEYS:
     _register_upload(_key)
 
 
-def _work(files: dict[str, session.Upload]) -> session.Work:
+def _work(files: dict[str, session.Upload], model: str) -> session.Work:
     def run(progress, cancelled):
         analyses: dict[str, Analysis] = {}
         for key in KEYS:
             def step(stage: str, detail: str = "", key: str = key) -> None:
                 progress(stage, "Budget {}{}".format(key, " · " + detail if detail else ""))
             try:
-                analyses[key] = analyse_document(files[key].data, files[key].name, step, cancelled)
+                analyses[key] = analyse_document(files[key].data, files[key].name, step, cancelled, model)
             except AnalysisError as exc:
                 raise AnalysisError("Budget {}: {}".format(key, exc)) from exc
         progress(C.STAGE_SCORE)
@@ -214,14 +216,16 @@ def _work(files: dict[str, session.Upload]) -> session.Work:
 
 
 @callback(Output("compare-message", "children"), Output("compare-job", "data"),
-          Input("compare-run", "n_clicks"), Input("compare-cancel", "n_clicks"), State("session", "data"), prevent_initial_call=True)
-def start_or_stop(run: int, _cancel: int, sid: str):
+          Input("compare-run", "n_clicks"), Input("compare-cancel", "n_clicks"), State("compare-model", "value"), State("session", "data"),
+          prevent_initial_call=True)
+def start_or_stop(run: int, _cancel: int, model: str | None, sid: str):
     if ctx.triggered_id == "compare-cancel":
         session.cancel_job(sid, SLOT)
         return ui.token(), {"t": time.time()}
     if not run:
         raise PreventUpdate
-    problem = not_ready_notice()
+    model = model or client.default_model()
+    problem = not_ready_notice(model)
     if problem is not None:
         return problem, no_update
     files = {k: session.get_upload(sid, k) for k in KEYS}
@@ -229,7 +233,7 @@ def start_or_stop(run: int, _cancel: int, sid: str):
     if missing:
         return ui.notice("warn", "Please add %s first." % ("both budgets" if len(missing) == 2 else "budget " + missing[0]), "One more step"), no_update
     try:
-        session.start_job(sid, SLOT, _work(files))
+        session.start_job(sid, SLOT, _work(files, model))
     except session.Busy:
         return ui.notice("warn", session.BUSY_ERROR, "Please wait a moment"), no_update
     return ui.token(), {"t": time.time()}

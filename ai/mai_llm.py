@@ -1,15 +1,20 @@
 """The AI provider: every model call goes through the Posit mAI Gateway. Works only inside Posit Connect.
 
-Settings (environment variables, set in Posit Connect under Settings -> Runtime -> Environment Variables):
-    MAI_BASE_URL   gateway URL, ending in "/"
-    MAI_ENDPOINT   mAI endpoint of the model provider, sent as the mai-endpoint query parameter
-    MAI_MODEL      model name (optional; without it the default model of the endpoint's provider is used)
-Posit Connect sets CONNECT_CONTENT_GUID itself; it is sent as X-Posit-App-Id. No keys or tokens are used.
+The person using the app picks the model; constants.MODELS lists the ones offered. Each call gets the model's id.
 
-The model family (from MAI_MODEL, else from MAI_ENDPOINT) decides the wire format:
-    gpt-*     OpenAI Responses API through the openai SDK            JSON shape: strict json_schema
-    gemini-*  Gemini Interactions API through the google-genai SDK   JSON shape: response_format
-    claude-*  Bedrock Converse API over plain HTTP                   JSON shape: one forced tool call
+Settings (environment variables, set in Posit Connect under Settings -> Runtime -> Environment Variables):
+    MAI_BASE_URL          gateway URL, ending in "/"
+    MAI_OPENAI_ENDPOINT   mai-endpoint for the OpenAI models  (.../maifactory/openai/responses)
+    MAI_GEMINI_ENDPOINT   mai-endpoint for the Gemini models  (.../maifactory/gemini/interactions)
+    MAI_CLAUDE_ENDPOINT   mai-endpoint for the Claude models  (.../maifactory/bedrock/model/us.anthropic.<model>/converse)
+A provider without its endpoint is offered as "not set up". For Claude the chosen model is written into the endpoint
+path in place of <model>. Posit Connect sets CONNECT_CONTENT_GUID itself; it is sent as X-Posit-App-Id. No keys or
+tokens are used.
+
+The model's family decides the wire format:
+    gpt     OpenAI Responses API through the openai SDK            JSON shape: strict json_schema
+    gemini  Gemini Interactions API through the google-genai SDK   JSON shape: response_format
+    claude  Bedrock Converse API over plain HTTP                   JSON shape: one forced tool call
 """
 
 from __future__ import annotations
@@ -24,15 +29,14 @@ import threading
 from collections.abc import Sequence
 from typing import Any
 
-from utils import constants as C
+import constants as C
 
 from .schemas import load_json
 from .types import AIConfigError, AIError, AIQuotaError, AIRateLimitError, AIResponseError, AIServerError, Attachment
 
 log = logging.getLogger(__name__)
 
-GPT, GEMINI, CLAUDE = "gpt", "gemini", "claude"
-DEFAULT_MODELS = {GPT: "gpt-6-luna", GEMINI: "gemini-3.8-flash", CLAUDE: "claude-haiku-5-5"}
+GPT, GEMINI, CLAUDE = C.GPT, C.GEMINI, C.CLAUDE
 TIMEOUT_S = 240.0
 MIN_OUTPUT_TOKENS = 4096
 TOOL_NAME = "answer"
@@ -55,10 +59,9 @@ OPTIONS = {GPT: {"reasoning": r"reasoning"},
            CLAUDE: {"forced_tool": r"tool_?choice", "temperature": r"temperature"}}
 
 _lock = threading.Lock()
-_client = None
-_client_key: tuple = ()
-_output_cap: int | None = None
-_options_ok = {name: True for opts in OPTIONS.values() for name in opts}
+_clients: dict[tuple, Any] = {}                         # one client per (family, gateway, endpoint, app id)
+_output_cap: dict[str, int] = {}                        # model -> refused output length, halved
+_refused: set[tuple[str, str]] = set()                  # (model, optional setting) the model would not take
 _warned: set[str] = set()
 _usage = threading.local()                              # tokens of the last attempt in this thread
 
@@ -77,67 +80,39 @@ def base_url() -> str:
     return url if not url or url.endswith("/") else url + "/"
 
 
-def _family_of_model(model: str) -> str:
-    m = model.lower()
-    if m.startswith(("claude", "us.anthropic.", "anthropic.")):
-        return CLAUDE
-    if m.startswith("gpt"):
-        return GPT
-    if m.startswith("gemini"):
-        return GEMINI
-    return ""
+def model_info(model: str) -> C.Model:
+    try:
+        return C.MODELS_BY_ID[model]
+    except KeyError:
+        raise AIConfigError("Unknown model %r; offer it in constants.MODELS first" % model) from None
 
 
-def _family_of_endpoint(endpoint: str) -> str:
-    e = endpoint.lower().rstrip("/")
-    if "/bedrock/" in e or e.endswith("/converse"):
-        return CLAUDE
-    if "/openai/" in e or e.endswith("/responses"):
-        return GPT
-    if "/gemini/" in e or e.endswith("/interactions"):
-        return GEMINI
-    return ""
-
-
-def family() -> str:
-    """gpt, gemini or claude. MAI_MODEL decides; MAI_ENDPOINT must point at the same provider."""
-    by_model, by_endpoint = _family_of_model(_env(C.ENV_MAI_MODEL)), _family_of_endpoint(_env(C.ENV_MAI_ENDPOINT))
-    if by_model and by_endpoint and by_model != by_endpoint:
-        raise AIConfigError("MAI_MODEL is a %s model but MAI_ENDPOINT is a %s endpoint" % (by_model, by_endpoint))
-    if not (by_model or by_endpoint):
-        raise AIConfigError("Cannot tell the model provider from MAI_MODEL or MAI_ENDPOINT")
-    return by_model or by_endpoint
-
-
-def model_name() -> str:
-    fam, model = family(), _env(C.ENV_MAI_MODEL)
-    if fam == CLAUDE:
-        if not model:
-            m = re.search(r"/model/([^/]+)/converse", _env(C.ENV_MAI_ENDPOINT))
-            model = m.group(1) if m and "<" not in m.group(1) else DEFAULT_MODELS[CLAUDE]
-        return re.sub(r"^(us\.)?anthropic\.", "", model)
-    return model or DEFAULT_MODELS[fam]
-
-
-def endpoint() -> str:
-    """MAI_ENDPOINT; for Claude the model in its path is set to model_name(), so MAI_MODEL picks the model."""
-    ep = _env(C.ENV_MAI_ENDPOINT)
-    if family() == CLAUDE:
-        ep = re.sub(r"/model/[^/]+/converse", lambda _: "/model/us.anthropic.%s/converse" % model_name(), ep)
+def endpoint(model: str) -> str:
+    """The mai-endpoint of the model's provider. For Claude the model goes into the path, in place of <model>."""
+    info = model_info(model)
+    ep = _env(C.ENV_MAI_ENDPOINTS[info.family])
+    if info.family == CLAUDE:                  # ".../model/us.anthropic.<model>/converse", or with any model in that place
+        ep = re.sub(r"/model/[^/]+/converse", lambda _: "/model/us.anthropic.%s/converse" % model, ep)
     return ep
 
 
+def is_available(model: str) -> bool:
+    """The gateway, the app id and the endpoint of this model's provider are all set."""
+    return model in C.MODELS_BY_ID and bool(base_url() and _env(C.ENV_CONNECT_GUID) and endpoint(model))
+
+
+def available_models() -> list[str]:
+    return [m.id for m in C.MODELS if is_available(m.id)]
+
+
 def is_configured() -> bool:
-    if not (base_url() and _env(C.ENV_MAI_ENDPOINT) and _env(C.ENV_CONNECT_GUID)):
-        return False
-    try:
-        family()
-    except AIConfigError as exc:
-        if str(exc) not in _warned:
-            _warned.add(str(exc))
-            log.warning("mAI settings: %s", exc)
-        return False
-    return True
+    """At least one model can be used."""
+    ok = bool(available_models())
+    if not ok and "settings" not in _warned:
+        _warned.add("settings")
+        log.warning("mAI settings: %s, %s and at least one of %s are needed", C.ENV_MAI_BASE_URL, C.ENV_CONNECT_GUID,
+                    ", ".join(C.ENV_MAI_ENDPOINTS.values()))
+    return ok
 
 
 def _headers() -> dict:
@@ -173,44 +148,50 @@ def last_usage() -> int | None:
 
 # ── the one entry point ─────────────────────────────────────────────────────
 def generate_json(system: str, prompt: str, schema: dict, attachments: Sequence[Attachment] = (),
-                  max_output_tokens: int = 16384, temperature: float = 0.0) -> Any:
+                  max_output_tokens: int = 16384, temperature: float = 0.0, model: str = C.DEFAULT_MODEL) -> Any:
     """One attempt. Returns parsed JSON or raises one of the AI errors in ai/types.py.
 
     If the model refuses an optional setting or the requested output length, that is adjusted, remembered for
-    later calls, and the request is sent again.
+    later calls of the same model, and the request is sent again.
     """
-    global _output_cap
-    fam = family()
+    fam = model_info(model).family
+    if not is_available(model):
+        raise AIConfigError("%s is not set up: %s is missing" % (model, C.ENV_MAI_ENDPOINTS[fam]))
     send = {GPT: _gpt, GEMINI: _gemini, CLAUDE: _claude}[fam]
     _usage.tokens = None
     while True:
-        tokens = min(max_output_tokens, _output_cap or max_output_tokens)
+        tokens = min(max_output_tokens, _output_cap.get(model, max_output_tokens))
         try:
-            return send(system, prompt, schema, attachments, tokens, temperature)
+            return send(model, system, prompt, schema, attachments, tokens, temperature)
         except _OutputLimitError:
             if tokens <= MIN_OUTPUT_TOKENS:
                 raise
             with _lock:
-                _output_cap = max(MIN_OUTPUT_TOKENS, tokens // 2)
-            log.warning("Model refused %d output tokens; continuing with %d", tokens, _output_cap)
+                _output_cap[model] = max(MIN_OUTPUT_TOKENS, tokens // 2)
+            log.warning("%s refused %d output tokens; continuing with %d", model, tokens, _output_cap[model])
         except AIResponseError as exc:
             option = next((name for name, pattern in OPTIONS[fam].items()
-                           if _options_ok[name] and re.search(pattern, str(exc), re.I)), None)
+                           if _accepts(model, name) and re.search(pattern, str(exc), re.I)), None)
             if option is None or exc.too_long:
                 raise
-            _options_ok[option] = False
-            log.warning("Model does not accept the %s setting; continuing without it", option)
+            _refused.add((model, option))
+            log.warning("%s does not accept the %s setting; continuing without it", model, option)
 
 
-def _client_for(fam: str):
-    """One client, rebuilt when the settings change. The Gemini client must stay referenced or it closes itself."""
-    global _client, _client_key
-    key = (fam, base_url(), endpoint(), _env(C.ENV_CONNECT_GUID))
+def _accepts(model: str, option: str) -> bool:
+    return (model, option) not in _refused
+
+
+def _client_for(model: str):
+    """One client per provider and settings, kept for later calls. The Gemini client must stay referenced or it
+    closes itself. Claude's client is plain HTTP: the endpoint goes with each request, so all Claude models share it."""
+    fam = model_info(model).family
+    ep = endpoint(model)
+    key = (fam, base_url(), ep if fam != CLAUDE else "", _env(C.ENV_CONNECT_GUID))
     with _lock:
-        if _client is None or _client_key != key:
-            _client = {GPT: _new_gpt_client, GEMINI: _new_gemini_client, CLAUDE: _new_http_client}[fam]()
-            _client_key = key
-        return _client
+        if key not in _clients:
+            _clients[key] = {GPT: _new_gpt_client, GEMINI: _new_gemini_client, CLAUDE: _new_http_client}[fam](ep)
+        return _clients[key]
 
 
 def _b64(a: Attachment) -> str:
@@ -218,12 +199,12 @@ def _b64(a: Attachment) -> str:
 
 
 # ── GPT: OpenAI Responses API ───────────────────────────────────────────────
-def _new_gpt_client():
+def _new_gpt_client(mai_endpoint: str):
     from openai import OpenAI
 
     # api_key is not used by the gateway; max_retries=0 because ai/ratelimit.py already paces and retries.
     return OpenAI(base_url=base_url(), api_key="not-used", default_headers=_headers(),
-                  default_query={"mai-endpoint": endpoint()}, timeout=TIMEOUT_S, max_retries=0)
+                  default_query={"mai-endpoint": mai_endpoint}, timeout=TIMEOUT_S, max_retries=0)
 
 
 def _gpt_content(prompt: str, attachments: Sequence[Attachment]) -> list:
@@ -256,16 +237,16 @@ def strict_schema(schema: dict) -> dict:
     return schema
 
 
-def _gpt(system, prompt, schema, attachments, tokens, temperature) -> Any:
+def _gpt(model, system, prompt, schema, attachments, tokens, temperature) -> Any:
     # temperature is not sent: GPT-5 class reasoning models do not take it.
-    request = dict(model=model_name(), instructions=system, max_output_tokens=tokens,
+    request = dict(model=model, instructions=system, max_output_tokens=tokens,
                    input=[{"role": "user", "content": _gpt_content(prompt, attachments)}],
                    text={"format": {"type": "json_schema", "name": TOOL_NAME, "schema": strict_schema(schema),
                                     "strict": True}})
-    if _options_ok["reasoning"]:
+    if _accepts(model, "reasoning"):
         request["reasoning"] = {"effort": "low"}
     try:
-        response = _client_for(GPT).responses.create(**request)
+        response = _client_for(model).responses.create(**request)
     except Exception as exc:
         raise _sdk_error(exc) from exc
     log.debug("mAI usage: %s", getattr(response, "usage", None))
@@ -285,28 +266,28 @@ def _gpt(system, prompt, schema, attachments, tokens, temperature) -> Any:
 
 
 # ── Gemini: Interactions API ────────────────────────────────────────────────
-def _new_gemini_client():
+def _new_gemini_client(mai_endpoint: str):
     from google import genai
     from google.genai import types
 
     # Retries are switched off (no status code is retryable) because ai/ratelimit.py already paces and retries.
     return genai.Client(api_key="not-used", http_options=types.HttpOptions(
         base_url=base_url().rstrip("/"), api_version="", headers=_headers(), timeout=int(TIMEOUT_S * 1000),
-        client_args={"params": {"mai-endpoint": endpoint()}},
+        client_args={"params": {"mai-endpoint": mai_endpoint}},
         retry_options=types.HttpRetryOptions(attempts=1, http_status_codes=[599])))
 
 
-def _gemini(system, prompt, schema, attachments, tokens, temperature) -> Any:
+def _gemini(model, system, prompt, schema, attachments, tokens, temperature) -> Any:
     # temperature is not sent: Gemini 3 models are meant to run at their default.
     content = [{"type": "image" if a.mime_type.startswith("image/") else "document", "data": _b64(a),
                 "mime_type": a.mime_type} for a in attachments]
     content.append({"type": "text", "text": prompt})
     config: dict[str, Any] = {"max_output_tokens": tokens}
-    if _options_ok["thinking"]:
+    if _accepts(model, "thinking"):
         config["thinking_level"] = "low"
     try:
-        response = _client_for(GEMINI).interactions.create(
-            model=model_name(), system_instruction=system, input=content, generation_config=config,
+        response = _client_for(model).interactions.create(
+            model=model, system_instruction=system, input=content, generation_config=config,
             response_format=schema, response_mime_type="application/json")
     except Exception as exc:
         raise _sdk_error(exc) from exc
@@ -322,7 +303,7 @@ def _gemini(system, prompt, schema, attachments, tokens, temperature) -> Any:
 
 
 # ── Claude: Bedrock Converse API ────────────────────────────────────────────
-def _new_http_client():
+def _new_http_client(_mai_endpoint: str = ""):
     import httpx
 
     return httpx.Client(timeout=TIMEOUT_S)
@@ -340,14 +321,14 @@ def _claude_content(prompt: str, attachments: Sequence[Attachment]) -> list:
     return parts
 
 
-def _claude(system, prompt, schema, attachments, tokens, temperature) -> Any:
+def _claude(model, system, prompt, schema, attachments, tokens, temperature) -> Any:
     import httpx
 
-    forced = _options_ok["forced_tool"]
+    forced = _accepts(model, "forced_tool")
     spec = {"name": TOOL_NAME, "description": "Return the answer in exactly this JSON shape.",
             "inputSchema": {"json": schema}}
     inference: dict[str, Any] = {"maxTokens": tokens}
-    if _options_ok["temperature"]:
+    if _accepts(model, "temperature"):
         inference["temperature"] = temperature
     payload = {
         "system": [{"text": system + "\n\nAlways reply by calling the %s tool. If you cannot, reply with the JSON "
@@ -358,7 +339,7 @@ def _claude(system, prompt, schema, attachments, tokens, temperature) -> Any:
                        "toolChoice": {"tool": {"name": TOOL_NAME}} if forced else {"auto": {}}},
     }
     try:
-        response = _client_for(CLAUDE).post(base_url() + "converse", params={"mai-endpoint": endpoint()},
+        response = _client_for(model).post(base_url() + "converse", params={"mai-endpoint": endpoint(model)},
                                             headers=dict(_headers(), **{"Content-Type": "application/json"}),
                                             json=payload)
     except (httpx.TimeoutException, httpx.TransportError) as exc:

@@ -5,9 +5,9 @@ import time
 
 import pytest
 
+import constants as C
 from ai.types import AIQuotaError, Cancelled
 from tagging.pipeline import AnalysisError
-from utils import constants as C
 from utils import session
 
 

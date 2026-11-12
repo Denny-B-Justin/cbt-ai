@@ -157,6 +157,10 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 .card-hint { margin-top: 2px; font-size: 14px; color: var(--ink-mute); }
 .card-body { padding: 16px 22px 22px; display: grid; gap: 16px; }
 
+.model-picker { display: grid; gap: 4px; max-width: 360px; }
+.model-picker-label { font-size: 14px; font-weight: 600; color: var(--ink); }
+.model-picker-hint { font-size: 13px; color: var(--ink-mute); }
+.model-picker-select { font-size: 15px; }
 .dropzone { display: block; border: 2px dashed #9FBBAA; border-radius: var(--radius); background: #F8FBF9; cursor: pointer;
   transition: border-color .15s, background-color .15s; }
 .dropzone:hover, .dropzone.is-active { border-color: var(--indigo); background: var(--info-bg); }

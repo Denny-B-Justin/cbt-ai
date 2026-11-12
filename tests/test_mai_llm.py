@@ -3,21 +3,27 @@ fallbacks and error handling. No network needed."""
 
 import pytest
 
+import constants as C
 from ai import client, mai_llm
 from ai.types import AIConfigError, AIQuotaError, AIRateLimitError, AIResponseError, AIServerError, Attachment
 from tests.fake_mai_server import FakeMaiServer, claude_body, error_body, gemini_body, gpt_body
 
 SCHEMA = {"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]}
 QA = "https://azapimqa.worldbank.org/maifactory/"
-ENDPOINTS = {"gpt": QA + "openai/responses", "gemini": QA + "gemini/interactions",
+ENV = {"gpt": "MAI_OPENAI_ENDPOINT", "gemini": "MAI_GEMINI_ENDPOINT", "claude": "MAI_CLAUDE_ENDPOINT"}
+TEMPLATES = {"gpt": QA + "openai/responses", "gemini": QA + "gemini/interactions",
+             "claude": QA + "bedrock/model/us.anthropic.<model>/converse"}          # as the developer guide writes them
+MODEL = {"gpt": "gpt-6-luna", "gemini": "gemini-3.8-flash", "claude": "claude-haiku-5-5"}
+ENDPOINTS = {"gpt": TEMPLATES["gpt"], "gemini": TEMPLATES["gemini"],
              "claude": QA + "bedrock/model/us.anthropic.claude-haiku-5-5/converse"}
 OK = {"gpt": lambda: gpt_body('{"a": 1}'), "gemini": lambda: gemini_body('{"a": 1}'),
       "claude": lambda: claude_body({"a": 1})}
 
 
 def reset():
-    mai_llm._client, mai_llm._client_key, mai_llm._output_cap = None, (), None
-    mai_llm._options_ok.update({k: True for k in mai_llm._options_ok})
+    mai_llm._clients.clear()
+    mai_llm._output_cap.clear()
+    mai_llm._refused.clear()
     mai_llm._warned.clear()
 
 
@@ -28,79 +34,89 @@ def _fresh():
     reset()
 
 
-def settings(monkeypatch, family, base="https://gw/posit-mai/conversationalai/", model=None):
+def settings(monkeypatch, families=("gpt", "gemini", "claude"), base="https://gw/posit-mai/conversationalai/"):
     monkeypatch.setenv("MAI_BASE_URL", base)
-    monkeypatch.setenv("MAI_ENDPOINT", ENDPOINTS[family])
-    if model is None:
-        monkeypatch.delenv("MAI_MODEL", raising=False)
-    else:
-        monkeypatch.setenv("MAI_MODEL", model)
+    for fam, name in ENV.items():
+        if fam in families:
+            monkeypatch.setenv(name, TEMPLATES[fam])
+        else:
+            monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("CONNECT_CONTENT_GUID", "app-guid-1")
 
 
 @pytest.fixture(params=["gpt", "gemini", "claude"])
 def gateway(request, monkeypatch):
     srv = FakeMaiServer(OK[request.param]).start()
-    settings(monkeypatch, request.param, base=srv.url)
+    settings(monkeypatch, base=srv.url)
     srv.family = request.param
+    srv.model = MODEL[request.param]
     yield srv
     reset()
     srv.stop()
 
 
-def ask(**kw):
-    return mai_llm.generate_json("SYSTEM TEXT", "PROMPT TEXT", SCHEMA, **kw)
+def ask(gateway, **kw):
+    return mai_llm.generate_json("SYSTEM TEXT", "PROMPT TEXT", SCHEMA, model=gateway.model, **kw)
 
 
 # ── settings ────────────────────────────────────────────────────────────────
-@pytest.mark.parametrize("family,model,expected", [
-    ("gpt", None, "gpt-6-luna"), ("gpt", "gpt-5.6-luna", "gpt-5.6-luna"),
-    ("gemini", None, "gemini-3.8-flash"), ("gemini", "gemini-3.1-flash-lite", "gemini-3.1-flash-lite"),
-    ("claude", None, "claude-haiku-5-5"), ("claude", "us.anthropic.claude-haiku-5-5", "claude-haiku-5-5"),
-])
-def test_family_and_model_come_from_the_settings(monkeypatch, family, model, expected):
-    settings(monkeypatch, family, model=model)
-    assert mai_llm.family() == family and mai_llm.model_name() == expected and mai_llm.is_configured()
+def test_every_model_of_the_picker_is_on_the_gateways_allowed_list():
+    allowed = {"claude-haiku-5-5", "gpt-6-luna", "gpt-5.6-luna", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite",
+               "gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"}       # developer guide, section 3
+    assert {m.id for m in C.MODELS} <= allowed and C.DEFAULT_MODEL in C.MODELS_BY_ID
+    assert len({m.label for m in C.MODELS}) == len(C.MODELS)
 
 
-def test_the_model_alone_picks_the_family(monkeypatch):
-    settings(monkeypatch, "gpt", model="gemini-3.6-flash")
-    monkeypatch.setenv("MAI_ENDPOINT", "https://example/custom")
-    assert mai_llm.family() == "gemini"
-
-
-def test_a_model_that_does_not_match_the_endpoint_is_a_setup_error(monkeypatch):
-    settings(monkeypatch, "gpt", model="claude-haiku-5-5")
+def test_each_provider_is_available_only_with_its_own_endpoint(monkeypatch):
+    settings(monkeypatch, families=("gemini",))
+    assert mai_llm.available_models() == ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.5-flash-lite"]
+    assert mai_llm.is_configured() and client.is_configured()
+    assert client.default_model() == "gemini-3.8-flash", "the default model falls back to the first one set up"
     with pytest.raises(AIConfigError):
-        mai_llm.family()
-    assert not mai_llm.is_configured() and not client.is_configured()
+        client.ask_json("s", "p", SCHEMA, model="gpt-6-luna")
+    settings(monkeypatch)
+    assert mai_llm.available_models() == [m.id for m in C.MODELS] and client.default_model() == C.DEFAULT_MODEL
 
 
-def test_claude_model_is_written_into_the_endpoint(monkeypatch):
-    settings(monkeypatch, "claude", model="claude-haiku-9")
-    assert mai_llm.endpoint() == QA + "bedrock/model/us.anthropic.claude-haiku-9/converse"
-    monkeypatch.setenv("MAI_ENDPOINT", QA + "bedrock/model/us.anthropic.<model>/converse")
-    monkeypatch.delenv("MAI_MODEL")
-    assert mai_llm.endpoint() == QA + "bedrock/model/us.anthropic.claude-haiku-5-5/converse"
+def test_the_endpoint_follows_the_chosen_model(monkeypatch):
+    settings(monkeypatch)
+    assert mai_llm.endpoint("gpt-5.6-luna") == mai_llm.endpoint("gpt-6-luna") == TEMPLATES["gpt"]
+    assert mai_llm.endpoint("gemini-3.5-flash-lite") == TEMPLATES["gemini"]
+    assert mai_llm.endpoint("claude-haiku-5-5") == ENDPOINTS["claude"]
+    monkeypatch.setenv("MAI_CLAUDE_ENDPOINT", QA + "bedrock/model/us.anthropic.claude-old/converse")
+    assert mai_llm.endpoint("claude-haiku-5-5") == ENDPOINTS["claude"], "a model already in the path is replaced too"
+
+
+def test_an_unknown_model_is_a_setup_error(monkeypatch):
+    settings(monkeypatch)
+    with pytest.raises(AIConfigError):
+        mai_llm.generate_json("s", "p", SCHEMA, model="gpt-4")
+    with pytest.raises(AIConfigError):
+        client.ask_json("s", "p", SCHEMA, model="gpt-4")
 
 
 def test_base_url_gets_its_trailing_slash(monkeypatch):
-    settings(monkeypatch, "gpt", base="https://gw/posit-mai/conversationalai")
+    settings(monkeypatch, base="https://gw/posit-mai/conversationalai")
     assert mai_llm.base_url() == "https://gw/posit-mai/conversationalai/"
 
 
-@pytest.mark.parametrize("missing", ["MAI_BASE_URL", "MAI_ENDPOINT", "CONNECT_CONTENT_GUID"])
+@pytest.mark.parametrize("missing", ["MAI_BASE_URL", "CONNECT_CONTENT_GUID"])
 def test_not_configured_without_each_required_setting(monkeypatch, missing):
-    settings(monkeypatch, "gpt")
+    settings(monkeypatch)
     monkeypatch.delenv(missing)
-    assert not mai_llm.is_configured() and not client.is_configured()
+    assert not mai_llm.is_configured() and not client.is_configured() and client.available_models() == []
     with pytest.raises(AIConfigError):
         client.ask_json("s", "p", SCHEMA)
 
 
+def test_not_configured_without_any_endpoint(monkeypatch):
+    settings(monkeypatch, families=())
+    assert not mai_llm.is_configured() and not client.is_configured()
+
+
 # ── request shape ───────────────────────────────────────────────────────────
 def test_every_request_carries_the_app_id_and_the_endpoint(gateway):
-    assert ask(attachments=[Attachment("application/pdf", b"%PDF-1.4 data")]) == {"a": 1}
+    assert ask(gateway, attachments=[Attachment("application/pdf", b"%PDF-1.4 data")]) == {"a": 1}
     req = gateway.requests[-1]
     assert req["path"].endswith({"gpt": "/responses", "gemini": "/interactions", "claude": "/converse"}[gateway.family])
     assert req["path"].startswith(FakeMaiServer.PREFIX)
@@ -114,9 +130,9 @@ def test_every_request_carries_the_app_id_and_the_endpoint(gateway):
 def test_gpt_request_body(gateway):
     if gateway.family != "gpt":
         pytest.skip("GPT only")
-    ask(attachments=[Attachment("application/pdf", b"%PDF")], max_output_tokens=777)
+    ask(gateway, attachments=[Attachment("application/pdf", b"%PDF")], max_output_tokens=777)
     body = gateway.requests[-1]["body"]
-    assert body["model"] == "gpt-6-luna" and body["instructions"] == "SYSTEM TEXT" and body["max_output_tokens"] == 777
+    assert body["model"] == gateway.model and body["instructions"] == "SYSTEM TEXT" and body["max_output_tokens"] == 777
     fmt = body["text"]["format"]
     assert fmt["type"] == "json_schema" and fmt["strict"] and fmt["schema"]["additionalProperties"] is False
     parts = body["input"][0]["content"]
@@ -127,9 +143,9 @@ def test_gpt_request_body(gateway):
 def test_gemini_request_body(gateway):
     if gateway.family != "gemini":
         pytest.skip("Gemini only")
-    ask(attachments=[Attachment("application/pdf", b"%PDF")], max_output_tokens=777)
+    ask(gateway, attachments=[Attachment("application/pdf", b"%PDF")], max_output_tokens=777)
     body = gateway.requests[-1]["body"]
-    assert body["model"] == "gemini-3.8-flash" and body["system_instruction"] == "SYSTEM TEXT"
+    assert body["model"] == gateway.model and body["system_instruction"] == "SYSTEM TEXT"
     assert body["response_format"] == SCHEMA and body["response_mime_type"] == "application/json"
     assert body["generation_config"] == {"max_output_tokens": 777, "thinking_level": "low"}
     content = body["input"][0]["content"]
@@ -140,7 +156,7 @@ def test_gemini_request_body(gateway):
 def test_claude_request_body(gateway):
     if gateway.family != "claude":
         pytest.skip("Claude only")
-    ask(attachments=[Attachment("application/pdf", b"%PDF")], max_output_tokens=777)
+    ask(gateway, attachments=[Attachment("application/pdf", b"%PDF")], max_output_tokens=777)
     body = gateway.requests[-1]["body"]
     assert body["inferenceConfig"] == {"maxTokens": 777, "temperature": 0.0}
     assert body["toolConfig"]["toolChoice"] == {"tool": {"name": "answer"}}
@@ -153,7 +169,7 @@ def test_claude_answer_as_plain_json_text_is_accepted(gateway):
     if gateway.family != "claude":
         pytest.skip("Claude only")
     gateway.queue.append((200, claude_body(text='```json\n{"a": 2}\n```', stop="end_turn")))
-    assert ask() == {"a": 2}
+    assert ask(gateway) == {"a": 2}
 
 
 # ── fallbacks ───────────────────────────────────────────────────────────────
@@ -165,18 +181,18 @@ REFUSALS = {"gpt": ("Unsupported parameter: 'reasoning.effort' is not supported 
 def test_a_refused_optional_setting_is_dropped_and_remembered(gateway):
     message, option = REFUSALS[gateway.family]
     gateway.queue.append((400, error_body(400, message)))
-    assert ask() == {"a": 1} and len(gateway.requests) == 2 and not mai_llm._options_ok[option]
+    assert ask(gateway) == {"a": 1} and len(gateway.requests) == 2 and not mai_llm._accepts(gateway.model, option)
     first, second = gateway.requests[0]["body"], gateway.requests[1]["body"]
     assert first != second
-    ask()
+    ask(gateway)
     assert gateway.requests[-1]["body"] == second, "remembered for later calls"
 
 
 def test_a_refused_output_length_is_halved_and_remembered(gateway):
     gateway.queue.append((400, error_body(400, "max_tokens: 32768 > 16000, which is the maximum allowed number of output tokens")))
-    assert ask(max_output_tokens=32768) == {"a": 1}
-    assert mai_llm._output_cap == 16384
-    ask(max_output_tokens=32768)
+    assert ask(gateway, max_output_tokens=32768) == {"a": 1}
+    assert mai_llm._output_cap[gateway.model] == 16384
+    ask(gateway, max_output_tokens=32768)
     assert len(gateway.requests) == 3
 
 
@@ -186,7 +202,7 @@ def test_a_refused_output_length_is_halved_and_remembered(gateway):
 def test_a_request_too_large_for_the_model_says_so(gateway, status, message):
     gateway.queue.append((status, error_body(status, message)))
     with pytest.raises(AIResponseError) as caught:
-        ask()
+        ask(gateway)
     assert caught.value.too_long and len(gateway.requests) == 1
 
 
@@ -207,7 +223,7 @@ def test_a_request_too_large_for_the_model_says_so(gateway, status, message):
 def test_http_errors_become_the_right_error(gateway, status, message, headers, error):
     gateway.queue.append((status, error_body(status, message), headers))
     with pytest.raises(error) as caught:
-        ask()
+        ask(gateway)
     assert type(caught.value) is error
     assert len(gateway.requests) == 1, "the SDKs must not retry on their own; ai/ratelimit.py does"
 
@@ -215,7 +231,7 @@ def test_http_errors_become_the_right_error(gateway, status, message, headers, e
 def test_rate_limit_error_carries_the_advised_wait(gateway):
     gateway.queue.append((429, error_body(429, "Too many requests"), {"Retry-After": "37"}))
     with pytest.raises(AIRateLimitError) as caught:
-        ask()
+        ask(gateway)
     assert caught.value.retry_after == 37.0
 
 
@@ -228,23 +244,34 @@ EMPTY = {"gpt": gpt_body(""), "gemini": gemini_body(""), "claude": claude_body(t
 def test_a_cut_off_answer_is_marked_truncated(gateway):
     gateway.queue.append((200, TRUNCATED[gateway.family]))
     with pytest.raises(AIResponseError) as caught:
-        ask()
+        ask(gateway)
     assert caught.value.truncated
 
 
 def test_an_empty_answer_is_an_error(gateway):
     gateway.queue.append((200, EMPTY[gateway.family]))
     with pytest.raises(AIResponseError):
-        ask()
+        ask(gateway)
 
 
 def test_unreachable_gateway_is_a_temporary_error(monkeypatch):
     for family in ("gpt", "gemini", "claude"):
         reset()
-        settings(monkeypatch, family, base="http://127.0.0.1:9/posit-mai/conversationalai/")
+        settings(monkeypatch, base="http://127.0.0.1:9/posit-mai/conversationalai/")
         with pytest.raises(AIServerError):
-            ask()
+            mai_llm.generate_json("s", "p", SCHEMA, model=MODEL[family])
 
 
 def test_the_whole_path_through_the_client_uses_the_gateway(gateway):
-    assert client.ask_json("s", "p", SCHEMA) == {"a": 1} and len(gateway.requests) == 1
+    assert client.ask_json("s", "p", SCHEMA, model=gateway.model) == {"a": 1} and len(gateway.requests) == 1
+    assert gateway.requests[-1]["query"]["mai-endpoint"] == ENDPOINTS[gateway.family]
+
+
+def test_a_second_model_of_the_same_provider_uses_its_own_name(gateway):
+    other = {"gpt": "gpt-5.6-luna", "gemini": "gemini-3.5-flash-lite", "claude": "claude-haiku-5-5"}[gateway.family]
+    mai_llm.generate_json("s", "p", SCHEMA, model=other)
+    req = gateway.requests[-1]
+    if gateway.family == "claude":
+        assert req["query"]["mai-endpoint"] == ENDPOINTS["claude"]
+    else:
+        assert req["body"]["model"] == other
