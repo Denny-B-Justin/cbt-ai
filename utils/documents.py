@@ -15,7 +15,7 @@ import constants as C
 
 AMOUNT_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+\.\d{1,2}\b")
 _CTRL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024    # stays under the smallest per-document limit of the mAI models (Claude: 4.5 MB)
+MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024    # keeps each call small and cheap; every provider accepts larger PDFs
 DOCX_PAGE_CHARS = 3500
 SHEET_HEADING_ROWS = 10                    # top rows of a sheet repeated with every later section of it
 SHEET_HEADING_CHARS = 3000

@@ -1,4 +1,5 @@
-"""The one door to the AI: picks the model, paces calls and retries. The provider is ai/mai_llm.py (Posit mAI Gateway).
+"""The one door to the AI: picks the model, paces calls and retries. The provider is ai/llm.py (OpenAI, Anthropic,
+Google Gemini or Mistral AI, with the developer's API keys).
 
 A provider only has to offer (the tests swap in a stand-in with the same functions):
 
@@ -17,11 +18,11 @@ from typing import Any
 
 import constants as C
 
-from . import mai_llm
+from . import llm
 from .ratelimit import RateLimiter, call_with_retries
 from .types import AIConfigError, Attachment
 
-_limiters: dict[str, RateLimiter] = {}         # one per model: the plan's limits are per model
+_limiters: dict[str, RateLimiter] = {}         # one per model: providers set their limits per model
 _lock = threading.Lock()
 
 # Token estimates, used to keep within the per-minute token budget before the real count is known. They lean high on
@@ -32,7 +33,7 @@ MIN_OUTPUT_GUESS = 1024
 
 
 def provider() -> ModuleType:
-    return mai_llm
+    return llm
 
 
 def limiter(model: str) -> RateLimiter:
@@ -66,9 +67,9 @@ def available_models() -> list[str]:
 
 
 def default_model() -> str:
-    """The model pre-selected in the picker: DEFAULT_MODEL when it can be used, else the first one that can."""
+    """The model pre-selected in the picker: the first of DEFAULT_MODELS that can be used, else the first that can."""
     ready = available_models()
-    return C.DEFAULT_MODEL if C.DEFAULT_MODEL in ready or not ready else ready[0]
+    return next((m for m in C.DEFAULT_MODELS if m in ready), ready[0] if ready else C.DEFAULT_MODELS[0])
 
 
 def model_label(model: str | None) -> str:
@@ -84,8 +85,7 @@ def ask_json(system: str, prompt: str, schema: dict, attachments: Sequence[Attac
     if model not in C.MODELS_BY_ID:
         raise AIConfigError("Unknown model %r" % model)
     if model not in available_models():
-        raise AIConfigError("%s is not set up (%s, %s and %s are needed, and the app must run on Posit Connect)" % (
-            model, C.ENV_MAI_BASE_URL, C.ENV_MAI_ENDPOINTS[C.MODELS_BY_ID[model].family], C.ENV_CONNECT_GUID))
+        raise AIConfigError("%s is not set up: %s is missing" % (model, C.ENV_API_KEYS[C.MODELS_BY_ID[model].provider]))
     return call_with_retries(
         lambda: prov.generate_json(system, prompt, schema, attachments=attachments, max_output_tokens=max_output_tokens,
                                    model=model),

@@ -1,12 +1,13 @@
-"""Try the real AI through the mAI gateway. Not part of the automated tests (they never call the network).
+"""Try the real AI with your API keys. Not part of the automated tests (they never call the network).
 
-Run it on Posit Connect (for example from a Connect-hosted session): the gateway refuses local machines.
+Set at least one provider's key first (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY or MISTRAL_API_KEY), in the
+environment or in a .env file next to app.py. Each check uses a little of your API credit.
 
     python tests/live_check.py                  quick check: settings, one small call, reading and tagging a sample budget
     python tests/live_check.py --full           also run a complete analysis of the sample (or of --file)
     python tests/live_check.py --file my.pdf    use your own document for the reading and tagging steps
     python tests/live_check.py --model gemini-3.8-flash   use this model (default: the one the model picker pre-selects)
-    python tests/live_check.py --every-model    first send one small call to every model that is set up
+    python tests/live_check.py --every-model    first send one small call to every model whose provider has a key
     python tests/live_check.py --fake           run this script against the built-in stand-in (checks the script itself)
 """
 
@@ -52,14 +53,14 @@ def fail(message: str) -> None:
 
 
 def check_key() -> bool:
-    t = step("mAI settings")
+    t = step("AI settings")
     if not client.is_configured():
-        fail("Set %s and at least one of %s, and run this on Posit Connect (%s is missing otherwise)."
-             % (C.ENV_MAI_BASE_URL, ", ".join(C.ENV_MAI_ENDPOINTS.values()), C.ENV_CONNECT_GUID))
+        fail("Set at least one of %s." % ", ".join(C.ENV_API_KEYS.values()))
         return False
     ready = client.available_models()
-    for m in C.MODELS:
-        print("   %-24s %s" % (m.label, "set up" if m.id in ready else "not set up (%s missing)" % C.ENV_MAI_ENDPOINTS[m.family]))
+    for p in C.PROVIDERS:
+        state = "key set" if any(C.MODELS_BY_ID[m].provider == p for m in ready) else "no key (%s)" % C.ENV_API_KEYS[p]
+        print("   %-16s %s" % (C.PROVIDER_LABELS[p], state))
     if MODEL not in ready:
         fail("%s is not set up" % MODEL)
         return False

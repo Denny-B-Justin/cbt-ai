@@ -191,10 +191,10 @@ def test_no_token_budget_means_no_token_bookkeeping():
     ({"total_input_tokens": 40, "total_output_tokens": 20}, 60),                 # Gemini
     ({}, None), (None, None)])
 def test_each_model_familys_usage_is_read(usage, total):
-    from ai import mai_llm
-    mai_llm._usage.tokens = None
-    mai_llm._record_usage(usage)
-    assert mai_llm.last_usage() == total
+    from ai import provider_common
+    provider_common.reset_usage()
+    provider_common.record_usage(usage)
+    assert provider_common.last_usage() == total
 
 
 def test_the_estimate_grows_with_what_is_sent():

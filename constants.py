@@ -8,41 +8,58 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-# ── AI models (Posit mAI Gateway) ───────────────────────────────────────────
-# The family decides the wire format and which mai-endpoint a model is sent to:
-#   gpt     OpenAI Responses API through the openai SDK
-#   gemini  Gemini Interactions API through the google-genai SDK
-#   claude  Bedrock Converse API over plain HTTP
-GPT, GEMINI, CLAUDE = "gpt", "gemini", "claude"
-FAMILY_LABELS = {GPT: "OpenAI", GEMINI: "Google Gemini", CLAUDE: "Anthropic Claude"}
+# ── AI models ───────────────────────────────────────────────────────────────
+# The app calls each provider's own API with the developer's API key. A provider is offered only when its key is set,
+# so someone with an OpenAI key alone sees only the OpenAI models.
+#   openai     Responses API through the openai SDK               JSON: strict json_schema
+#   anthropic  Messages API through the anthropic SDK             JSON: structured outputs (output_config)
+#   gemini     Interactions API through the google-genai SDK      JSON: response_format with a JSON schema
+#   mistral    Chat Completions through the mistralai SDK         JSON: response_format json_schema
+OPENAI, ANTHROPIC, GEMINI, MISTRAL = "openai", "anthropic", "gemini", "mistral"
+PROVIDERS = (OPENAI, ANTHROPIC, GEMINI, MISTRAL)
+PROVIDER_LABELS = {OPENAI: "OpenAI", ANTHROPIC: "Anthropic", GEMINI: "Google Gemini", MISTRAL: "Mistral AI"}
 
 
 @dataclass(frozen=True)
 class Model:
-    id: str          # the model name mAI knows (sent as "model"; for Claude it is part of the endpoint path)
+    id: str          # the model name the provider's API knows (sent as "model")
     label: str       # what people see in the model picker
-    family: str
+    provider: str
 
 
-# Offered in the model picker, in this order. Every one must be on the gateway's list of allowed models.
+# Offered in the model picker, in this order: per provider its three latest models, then one older model.
+# Checked against the providers' model pages in November 2026; update the ids here when a provider retires a model.
 MODELS = (
-    Model("claude-haiku-5-5", "Claude Haiku 5.5", CLAUDE),
-    Model("gpt-6-luna", "ChatGPT 6 Luna", GPT),
-    Model("gpt-5.6-luna", "ChatGPT 5.6 Luna", GPT),
+    Model("gpt-6-astra", "GPT-6 Astra", OPENAI),
+    Model("gpt-6.1-sol", "GPT-6.1 Sol", OPENAI),
+    Model("gpt-6-luna", "GPT-6 Luna", OPENAI),
+    Model("gpt-5.6-luna", "GPT-5.6 Luna (older)", OPENAI),
+    Model("claude-opus-5-5", "Claude Opus 5.5", ANTHROPIC),
+    Model("claude-sonnet-5-5", "Claude Sonnet 5.5", ANTHROPIC),
+    Model("claude-haiku-5-5", "Claude Haiku 5.5", ANTHROPIC),
+    Model("claude-haiku-4-5", "Claude Haiku 4.5 (older)", ANTHROPIC),
+    Model("gemini-4-argon", "Gemini 4 Argon", GEMINI),
     Model("gemini-3.8-flash", "Gemini 3.8 Flash", GEMINI),
-    Model("gemini-3.7-flash", "Gemini 3.7 Flash", GEMINI),
-    Model("gemini-3.5-flash-lite", "Gemini 3.5 Flash Lite", GEMINI),
+    Model("gemini-3.5-flash-lite", "Gemini 3.5 Flash-Lite", GEMINI),
+    Model("gemini-3.1-flash-lite", "Gemini 3.1 Flash-Lite (older)", GEMINI),
+    Model("mistral-large-latest", "Mistral Large (latest)", MISTRAL),
+    Model("mistral-medium-latest", "Mistral Medium (latest)", MISTRAL),
+    Model("mistral-small-latest", "Mistral Small (latest)", MISTRAL),
+    Model("mistral-large-2512", "Mistral Large 3 (older)", MISTRAL),
 )
 MODELS_BY_ID = {m.id: m for m in MODELS}
-DEFAULT_MODEL = "gpt-6-luna"              # pre-selected when its provider is set up; otherwise the first one that is
+# Pre-selected in the picker: the first of these whose provider has a key (a balance of quality and cost for
+# documents with thousands of lines); otherwise the first model that can be used.
+DEFAULT_MODELS = ("gpt-6.1-sol", "claude-sonnet-5-5", "gemini-3.8-flash", "mistral-medium-latest")
 
 # ── Environment variables ───────────────────────────────────────────────────
-# mAI: the gateway URL, and one mai-endpoint per model provider. A provider without an endpoint is shown as
-# "not set up" in the model picker. URLs are never written in the code. MAI_CLAUDE_ENDPOINT may keep "<model>" in its
-# path, as the developer guide writes it: the chosen Claude model is put there.
-ENV_MAI_BASE_URL = "MAI_BASE_URL"
-ENV_MAI_ENDPOINTS = {GPT: "MAI_OPENAI_ENDPOINT", GEMINI: "MAI_GEMINI_ENDPOINT", CLAUDE: "MAI_CLAUDE_ENDPOINT"}
-ENV_CONNECT_GUID = "CONNECT_CONTENT_GUID"     # set by Posit Connect itself, never by hand
+# One API key per provider; set only the ones you have. The names are the ones each provider's own SDK documents.
+ENV_API_KEYS = {OPENAI: "OPENAI_API_KEY", ANTHROPIC: "ANTHROPIC_API_KEY", GEMINI: "GEMINI_API_KEY",
+                MISTRAL: "MISTRAL_API_KEY"}
+ENV_API_KEY_ALIASES = {GEMINI: ("GOOGLE_API_KEY",)}       # also read, as the google-genai SDK does
+# Optional: another address for a provider's API (a company proxy, or a local stand-in in the tests).
+ENV_BASE_URLS = {OPENAI: "OPENAI_BASE_URL", ANTHROPIC: "ANTHROPIC_BASE_URL", GEMINI: "GEMINI_BASE_URL",
+                 MISTRAL: "MISTRAL_BASE_URL"}
 
 ENV_AI_RPM = "AI_REQUESTS_PER_MINUTE"
 ENV_AI_TPM = "AI_TOKENS_PER_MINUTE"
@@ -52,8 +69,8 @@ ENV_SESSION_MINUTES = "SESSION_IDLE_MINUTES"
 ENV_PORT = "PORT"
 ENV_MAX_JOBS = "MAX_RUNNING_ANALYSES"
 
-DEFAULT_AI_RPM = 3500             # the mAI plan's limits per model: 3,500 requests and 35,000 tokens per minute
-DEFAULT_AI_TPM = 35000            # 0 switches the token budget off
+DEFAULT_AI_RPM = 50               # per model; set it to your account's limits (they differ by provider and tier)
+DEFAULT_AI_TPM = 0                # tokens per minute per model; 0 switches the token budget off (429s are still handled)
 DEFAULT_AI_WORKERS = 3
 DEFAULT_MAX_UPLOAD_MB = 50
 DEFAULT_SESSION_MINUTES = 15

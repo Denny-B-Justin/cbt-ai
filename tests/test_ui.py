@@ -189,7 +189,7 @@ def test_the_model_picker_sits_above_the_upload_and_offers_every_model(page, bas
     page.wait_for_selector(picker)
     above = page.evaluate("([p, d]) => document.querySelector(p).getBoundingClientRect().top < "
                           "document.querySelector(d).getBoundingClientRect().top", [picker, ".dropzone"])
-    assert above and C.MODELS_BY_ID[C.DEFAULT_MODEL].label in page.inner_text(".model-picker")
+    assert above and C.MODELS_BY_ID[C.DEFAULT_MODELS[0]].label in page.inner_text(".model-picker")
     page.click(picker)
     for m in C.MODELS:
         page.wait_for_selector("text=%s" % m.label)
@@ -198,11 +198,11 @@ def test_the_model_picker_sits_above_the_upload_and_offers_every_model(page, bas
 def test_the_chosen_model_does_the_work(page, base, fake_ai):
     go(page, base, "evaluate")
     page.click("#eval-model")
-    page.click("text=Gemini 3.7 Flash")
+    page.click("text=Gemini 3.8 Flash")
     drop(page, "#eval-upload", GREEN)
     page.wait_for_selector(".results", timeout=SLOW)
-    assert "tagged by Gemini 3.7 Flash" in page.inner_text(".result-head")
-    assert {c["model"] for c in fake_ai.calls} == {"gemini-3.7-flash"}
+    assert "tagged by Gemini 3.8 Flash" in page.inner_text(".result-head")
+    assert {c["model"] for c in fake_ai.calls} == {"gemini-3.8-flash"}
 
 
 def test_evaluate_download_is_an_excel_file(page, base, fake_ai, tmp_path):

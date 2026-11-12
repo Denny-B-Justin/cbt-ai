@@ -17,8 +17,9 @@ outside the request.
 
 ## Settings
 
-Provide environment variables (see README and `.env.sample`): `MAI_BASE_URL` and the endpoint of each model provider to
-offer (`MAI_OPENAI_ENDPOINT`, `MAI_GEMINI_ENDPOINT`, `MAI_CLAUDE_ENDPOINT`), set in Posit Connect. No secrets or model names are needed. `.env` is read
+Provide environment variables (see README and `.env.sample`): the API key of at least one AI provider
+(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`). These are secrets: set them in your host's
+secret or environment settings, never in the repository. The model picker offers only the models of providers with a key. `.env` is read
 only if present and is in `.gitignore`.
 
 ## Reverse proxy
@@ -52,7 +53,7 @@ only if present and is in `.gitignore`.
 ## Upgrading dependencies
 
 `requirements.txt` pins ranges, not exact versions. Before upgrading `dash`, `plotly`, `google-genai` or `openai`, run `pytest` (the
-mAI tests exercise the real SDKs against a local server, so breaking SDK changes surface there) and
+provider tests exercise the real SDKs against a local server, so breaking SDK changes surface there) and
 `python tests/live_check.py`.
 
 ## If this becomes more than a demo

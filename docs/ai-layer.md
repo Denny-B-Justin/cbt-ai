@@ -4,7 +4,7 @@ Everything that talks to a model is in `ai/`. Nothing outside it names a vendor.
 
 ## Provider interface
 
-`ai/client.py` uses `ai/mai_llm.py`; a provider (the tests swap in stand-ins) needs three functions:
+`ai/client.py` uses `ai/llm.py`; a provider (the tests swap in stand-ins) needs three functions:
 
 ```python
 def is_configured() -> bool: ...                 # at least one model can be used
@@ -31,8 +31,8 @@ sheet name it. Without a model (tests, scripts) `client.default_model()` is used
 
 | Error | Meaning | Retried by `call_with_retries` | Effect on an analysis |
 |---|---|---|---|
-| `AIConfigError` | missing settings, model not allowed, not on Posit Connect | no | whole analysis stops, user sees "not set up correctly" |
-| `AIQuotaError` | daily allowance used up | no | stops, "daily limit" |
+| `AIConfigError` | no key for the model's provider, a key the provider refuses, an unknown or retired model | no | whole analysis stops, user sees "not set up correctly" |
+| `AIQuotaError` | quota or credit used up, payment required | no | stops, "daily limit" |
 | `AIRateLimitError(retry_after)` | per-minute limit | yes, up to 6 attempts, honours `retry_after`, else 5·2ⁿ s (max 60) | limiter slows down 1.5× (max 6×), recovers 0.9× per success |
 | `AIServerError` | 5xx, timeout, network | yes, 2ⁿ s (max 30) | after 6 attempts the call fails; a section may be skipped |
 | `AIResponseError(truncated, blocked, too_long)` | empty, cut off, blocked, invalid JSON, request too large | no (handled by `tasks.py`) | see below |
@@ -43,38 +43,57 @@ sheet name it. Without a model (tests, scripts) `client.default_model()` is used
 ## Pacing
 
 `RateLimiter(rpm, tpm)` spaces calls at least `60/rpm` seconds apart and keeps the tokens of any 60 seconds within `tpm`,
-across **all visitors**, with one limiter per model (`client.limiter(model)`), because the plan's limits are per model. Before a call, `client.estimate_tokens` reserves a deliberately high
+across **all visitors**, with one limiter per model (`client.limiter(model)`), because providers set limits per model. Before a call, `client.estimate_tokens` reserves a deliberately high
 guess (characters sent ÷ 3, attachments by size, plus a quarter of the output allowance); afterwards the provider's
-reported usage (`mai_llm.last_usage()`) replaces it. A refused (429) call gives its tokens back; a cut-off answer keeps
+reported usage (`llm.last_usage()`) replaces it. A refused (429) call gives its tokens back; a cut-off answer keeps
 its real count. A call larger than the whole budget waits for an empty minute and then runs alone.
-Defaults match the mAI plan (`AI_REQUESTS_PER_MINUTE=3500`, `AI_TOKENS_PER_MINUTE=35000`); with these, tokens are the
-real limit.
+Defaults are `AI_REQUESTS_PER_MINUTE=50` and `AI_TOKENS_PER_MINUTE=0` (no token budget). Limits differ by provider and
+account tier: set both to your tier's limits. Without a token budget, a call the provider refuses (429) is still waited
+out and retried.
 
-## The provider (`ai/mai_llm.py`)
+## The providers (`ai/llm.py` and `ai/provider_*.py`)
 
-Every call goes through the Posit mAI Gateway; it only answers apps running on Posit Connect.
+The app calls each provider's own API with the developer's API key. `ai/llm.py` is the entry: it reads the keys,
+lists the models on offer and sends one attempt to the module of the chosen model's provider.
 
-- Settings: `MAI_BASE_URL` (gateway URL) and one `mai-endpoint` per provider: `MAI_OPENAI_ENDPOINT`,
-  `MAI_GEMINI_ENDPOINT`, `MAI_CLAUDE_ENDPOINT` (`constants.ENV_MAI_ENDPOINTS`). A model is available when the gateway URL,
-  Posit Connect's `CONNECT_CONTENT_GUID` (sent as `X-Posit-App-Id`) and its provider's endpoint are set. No keys or tokens.
-- The model's family (`constants.Model.family`) picks the endpoint and the wire format. For Claude the model is part of
-  the endpoint path: `endpoint(model)` puts `us.anthropic.<model id>` in place of `us.anthropic.<model>` (or of whatever
-  model the path holds). GPT and Gemini send the model id in the request body.
-- One SDK client per provider and settings is kept (`_clients`); refused settings and output lengths are remembered
-  per model.
-- Wire formats: GPT uses the OpenAI Responses API (openai SDK, strict `json_schema`); Gemini the Interactions API
-  (google-genai SDK, `response_format`); Claude the Bedrock Converse API over httpx (one forced tool whose input schema is
-  the task schema, plain JSON text accepted as a fallback). SDK retries are off; `ai/ratelimit.py` retries.
-- Settings a model refuses (GPT `reasoning`, Gemini `thinking_level`, Claude forced `toolChoice` or `temperature`) are
-  dropped, remembered and the request is resent. A refused output length is halved (not below 4096) and remembered.
-- Error mapping (`_status_error`): 413, or a 400 saying the input is too long → `AIResponseError(too_long=True)`;
-  429 → `AIRateLimitError` with the advised wait (`Retry-After`, or "try again in N seconds"), or `AIQuotaError` when the
-  message is about quota and the wait is over 5 minutes; 401/403/404 and missing header/parameter → `AIConfigError`;
-  408/409/425/5xx and network errors → `AIServerError`; anything else → `AIResponseError`. A cut-off answer →
-  `truncated=True`; an empty or filtered answer → `blocked=True`.
+- **Keys**: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `MISTRAL_API_KEY`
+  (`constants.ENV_API_KEYS`). A provider's four models (`constants.MODELS`) are offered only when its key is set.
+  `<PROVIDER>_BASE_URL` (`constants.ENV_BASE_URLS`) optionally points a provider at another address (a proxy, or the
+  local stand-in in the tests).
+- **One module per provider**, each with `new_client(api_key, base_url)`, `send(client, model, system, prompt, schema,
+  attachments, tokens, accepts)`, `OPTIONS` (optional settings the model may refuse) and `SUPPORTS_ATTACHMENTS`:
 
-Verified against a local fake gateway (`tests/fake_mai_server.py`). **Not** verified against the live service in CI;
-run `tests/live_check.py` on Posit Connect.
+| Module | API and SDK | JSON answer | PDF pages | Optional settings |
+|---|---|---|---|---|
+| `provider_openai.py` | Responses API, `openai` | `text.format` strict `json_schema` | `input_file` with a base64 data URL | `reasoning` (effort low) |
+| `provider_anthropic.py` | Messages API, `anthropic` | `output_config.format` `json_schema` (structured outputs) | `document` block, base64 | `structured_output` → falls back to one forced tool call, then to plain JSON text |
+| `provider_gemini.py` | Interactions API, `google-genai` | `response_format` with `mime_type` application/json and the schema | `document` part, base64 | `thinking` (level low) |
+| `provider_mistral.py` | Chat Completions, `mistralai` (`from mistralai.client import Mistral`) | `response_format` `json_schema`, strict | not sent (Mistral takes documents only as public links); the extracted text is | – |
+
+- `temperature` is not sent to OpenAI, Anthropic or Gemini (their current models are reasoning models and run at their
+  own default); Mistral gets 0.
+- Each SDK's own retries are off (`max_retries=0`, `HttpRetryOptions(attempts=1)`, no `RetryConfig` for Mistral);
+  `ai/ratelimit.py` retries. One SDK client per provider, key and address is kept (`llm._clients`). Settings a model
+  refuses and refused output lengths (halved, not below 4096) are remembered per model, and the request is resent.
+- **Error mapping** (`provider_common.sdk_error`, `status_error`): openai, anthropic and mistralai errors carry
+  `status_code`, google-genai's `APIError` carries `code`. 413, or a 400 saying the input is too long →
+  `AIResponseError(too_long=True)`; 429 → `AIRateLimitError` with the advised wait (`Retry-After`, or "try again in N
+  seconds"), or `AIQuotaError` when the message is about quota, credit or billing and the wait is over 5 minutes; 402 →
+  `AIQuotaError`; 401/403/404 (bad key, no access, unknown model) → `AIConfigError`; 408/409/425/5xx and network errors →
+  `AIServerError`; anything else → `AIResponseError`. A cut-off answer (OpenAI `incomplete`, Anthropic `max_tokens`,
+  Gemini `incomplete`, Mistral `length`) → `truncated=True`; an empty or refused answer → `blocked=True`.
+- **Token usage** (`provider_common.record_usage`) is read from each provider's usage block (`total_tokens`, or input
+  plus output tokens) and settles the rate limiter's estimate.
+
+Verified with the real SDKs against a local stand-in for the four APIs (`tests/fake_llm_server.py`). **Not** verified
+against the live services in CI; run `tests/live_check.py` with your key.
+
+## Keeping the model list current
+
+Providers release and retire models often. `constants.MODELS` holds, per provider, its three latest models and one
+older one (marked "(older)"); `constants.DEFAULT_MODELS` is the pre-selection order. They were checked against the
+providers' model pages in November 2026. When a model is retired the provider answers 404 and the user sees "not set up
+correctly"; replace its id in `MODELS`. Mistral's `-latest` aliases follow Mistral's newest model of each size.
 
 ## The four tasks (`ai/tasks.py`)
 

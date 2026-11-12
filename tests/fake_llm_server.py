@@ -1,4 +1,5 @@
-"""A tiny local stand-in for the Posit mAI Gateway, enough to test ai/mai_llm.py for GPT, Gemini and Claude offline."""
+"""A tiny local stand-in for the OpenAI, Anthropic, Gemini and Mistral APIs, enough to test ai/llm.py and the four
+provider modules offline with the real SDKs. Point a provider at it with <PROVIDER>_BASE_URL (see base_url())."""
 
 from __future__ import annotations
 
@@ -9,12 +10,19 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 
-def gpt_body(text: str, status: str = "completed", reason: str | None = None) -> dict[str, Any]:
-    return {"id": "resp_1", "object": "response", "created_at": 0, "model": "gpt-6-luna", "status": status,
+def openai_body(text: str, status: str = "completed", reason: str | None = None) -> dict[str, Any]:
+    return {"id": "resp_1", "object": "response", "created_at": 0, "model": "gpt-6.1-sol", "status": status,
             "incomplete_details": {"reason": reason} if reason else None, "parallel_tool_calls": False,
-            "tool_choice": "auto", "tools": [],
+            "tool_choice": "auto", "tools": [], "usage": {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
             "output": [{"type": "message", "id": "msg_1", "role": "assistant", "status": "completed",
                         "content": [{"type": "output_text", "text": text, "annotations": []}]}]}
+
+
+def anthropic_body(text: str = "", tool: Any = None, stop: str = "end_turn") -> dict[str, Any]:
+    content = [{"type": "tool_use", "id": "toolu_1", "name": "answer", "input": tool}] if tool is not None \
+        else ([{"type": "text", "text": text}] if text else [])
+    return {"id": "msg_1", "type": "message", "role": "assistant", "model": "claude-sonnet-5-5", "content": content,
+            "stop_reason": stop, "stop_sequence": None, "usage": {"input_tokens": 10, "output_tokens": 5}}
 
 
 def gemini_body(text: str, status: str = "completed") -> dict[str, Any]:
@@ -22,20 +30,19 @@ def gemini_body(text: str, status: str = "completed") -> dict[str, Any]:
             "steps": [{"type": "model_output", "content": [{"type": "text", "text": text}]}] if text else []}
 
 
-def claude_body(data: Any = None, text: str = "", stop: str = "tool_use") -> dict[str, Any]:
-    content = [{"toolUse": {"toolUseId": "t1", "name": "answer", "input": data}}] if data is not None else [{"text": text}]
-    return {"output": {"message": {"role": "assistant", "content": content}}, "stopReason": stop,
-            "usage": {"inputTokens": 10, "outputTokens": 5}}
+def mistral_body(text: str, finish: str = "stop") -> dict[str, Any]:
+    return {"id": "cmpl_1", "object": "chat.completion", "model": "mistral-medium-latest", "created": 0,
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": text}, "finish_reason": finish}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}}
 
 
 def error_body(code: int, message: str) -> dict[str, Any]:
-    return {"error": {"code": code, "message": message}}
+    """Every provider puts its message at error.message (Mistral also at the top level)."""
+    return {"type": "error", "error": {"code": code, "type": "error", "message": message}, "message": message}
 
 
-class FakeMaiServer:
+class FakeLLMServer:
     """queue: list of (http_status, json_body[, headers]). When empty, answers 200 with `default()`."""
-
-    PREFIX = "/posit-mai/conversationalai/"
 
     def __init__(self, default):
         self.queue: list[tuple] = []
@@ -68,10 +75,14 @@ class FakeMaiServer:
         self.thread = threading.Thread(target=lambda: self.httpd.serve_forever(poll_interval=0.02), daemon=True)
 
     @property
-    def url(self) -> str:
-        return "http://127.0.0.1:%d%s" % (self.httpd.server_address[1], self.PREFIX)
+    def root(self) -> str:
+        return "http://127.0.0.1:%d" % self.httpd.server_address[1]
 
-    def start(self) -> FakeMaiServer:
+    def base_url(self, provider: str) -> str:
+        """What <PROVIDER>_BASE_URL is set to: the openai SDK expects the /v1 in its base URL, the others add it."""
+        return self.root + "/v1" if provider == "openai" else self.root
+
+    def start(self) -> FakeLLMServer:
         self.thread.start()
         return self
 

@@ -15,22 +15,37 @@
   },
   "files": {
     "requirements.txt": {
-      "checksum": "3f90102c1a6c14a3f498c090eb1b8901"
+      "checksum": "556e38fbae789bd28a2cd2be2ed4671a"
     },
     ".env.sample": {
-      "checksum": "638ae12cb9e6a51ce11661b5f20a98dc"
+      "checksum": "8c4f364e52dae44db7384e8c7c6810f9"
     },
     "README.md": {
-      "checksum": "9a1263379a53dbf3447494be083f3aa5"
+      "checksum": "884d1cdc5615ddc378fc1754bbc33644"
     },
     "ai/__init__.py": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "ai/client.py": {
-      "checksum": "07111c19a890f2058552c1091adb75b0"
+      "checksum": "179bed3764f38e1fbb010b186ee0349c"
     },
-    "ai/mai_llm.py": {
-      "checksum": "225d389da2222542086164fdbf21bf5a"
+    "ai/llm.py": {
+      "checksum": "b5afdd7f1dd9d9251825c31bdaf4efe6"
+    },
+    "ai/provider_common.py": {
+      "checksum": "8b0f285094d94534062df69332627c89"
+    },
+    "ai/provider_openai.py": {
+      "checksum": "7f6f04c18ce02bc2a6028ce0312c5dab"
+    },
+    "ai/provider_anthropic.py": {
+      "checksum": "fee80fa53a1eb75cf51c5f6c48b8ec89"
+    },
+    "ai/provider_gemini.py": {
+      "checksum": "e51f498237a91800198f74909af4c1bf"
+    },
+    "ai/provider_mistral.py": {
+      "checksum": "ad48f9f08d86c6dd32731949ef5f6dc3"
     },
     "ai/prompt.py": {
       "checksum": "155a8095ab27b0bdd0069e8991d1564b"
@@ -51,10 +66,10 @@
       "checksum": "33549b3b9cea455dc0a0c7d4a472748b"
     },
     "constants.py": {
-      "checksum": "2bb3345f303be30d444f143c3e565475"
+      "checksum": "2f3b3190ad912d4bd49691dcfc10b81d"
     },
     "page_constants.py": {
-      "checksum": "4aa64d0a55d1b104898f0716096b99a0"
+      "checksum": "28c976e8fab44611cc7c4cd63de62db2"
     },
     "assets/The-World-Bank-group-white.png": {
       "checksum": "596f6d13fdd22a2760464b4cc449ff24"
@@ -126,10 +141,10 @@
       "checksum": "b356414e1e5fea089710ea88934bab48"
     },
     "utils/documents.py": {
-      "checksum": "32b7fbd73dae81c0376bdc139d942653"
+      "checksum": "71be2cea243f05e4dd21df5b23ca538e"
     },
     "utils/evaluate.py": {
-      "checksum": "09a4e4b3a015586a5c375adb198569b6"
+      "checksum": "7c2b2fbdc432c624a5a86b23c07e56ee"
     },
     "utils/export.py": {
       "checksum": "df82e4a9100fae3f2305bf63131d597a"

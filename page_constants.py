@@ -28,7 +28,6 @@ RESULT_TABLE_PAGE_SIZE = 15
 # ── Model picker ────────────────────────────────────────────────────────────
 MODEL_PICKER_LABEL = "AI model"
 MODEL_PICKER_HINT = "The AI assistant that reads and tags the budget."
-MODEL_NOT_SET_UP = "not set up"
 
 # ── Loading bar ─────────────────────────────────────────────────────────────
 STAGE_LABELS = {

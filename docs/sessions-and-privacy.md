@@ -37,7 +37,10 @@ Document text and, for table or scanned pages, the original PDF pages are sent t
 Budget briefs (numbers and line names) are sent for scoring. This is inherent to the design and is disclosed on the
 site in plain words ("read by an online AI service … please do not upload confidential documents").
 
-**Where text goes.** Model calls go only to the World Bank mAI gateway, which forwards them to the approved model. Usage is attributed to this app on Posit Connect.
+**Where text goes.** Model calls go only to the provider of the model the user chose (OpenAI, Anthropic, Google or
+Mistral AI), with the API key set for that provider, and are billed to that key. What the provider keeps, and whether
+it may use the text for training, is set by that provider's terms for API use and by the key owner's account settings;
+check them before uploading sensitive budgets.
 
 ## Concurrency and abuse limits
 

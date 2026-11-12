@@ -26,25 +26,25 @@ chart value and table is computed in Python from those judgements.
 
 ## Quick start
 
-Python 3.12 (targets 3.12.12, the version pinned in `manifest.json`).
+Python 3.10 or later (3.12 recommended). You need an API key from at least one of OpenAI, Anthropic, Google Gemini or
+Mistral AI.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.sample .env                                     # then put your key(s) in .env
 python app.py                                           # http://127.0.0.1:8050
 ```
 
-> **The AI works only on Posit Connect.** Locally the app starts, but analyses report that the service is not set up.
-> To try the whole interface on your own machine, use the scripted stand-in below.
-
-Check the real model once the app is deployed (run on Posit Connect):
+Check your key and the model with one small real call before analysing whole budgets (this uses a little API credit):
 
 ```bash
-python tests/live_check.py            # settings, one small call, reading + tagging a sample budget
-python tests/live_check.py --full     # also a complete analysis and a two-budget comparison
+python tests/live_check.py                    # settings, one small call, reading + tagging a sample budget
+python tests/live_check.py --every-model      # one small call to every model your keys unlock
+python tests/live_check.py --full             # also a complete analysis and a two-budget comparison
 ```
 
-Try the whole interface locally without the AI (uses a scripted stand-in for the model):
+Try the whole interface without any key (uses a scripted stand-in for the model):
 
 ```bash
 python tests/serve_fake.py            # PORT=8051 python tests/serve_fake.py for another port
@@ -58,23 +58,24 @@ gunicorn app:server --workers 1 --threads 8 --timeout 300 --bind 0.0.0.0:8050
 
 ## Configuration
 
-### AI settings
+### AI provider keys
 
-Set these in Posit Connect under **Settings → Runtime → Environment Variables**. No keys, tokens or model names are
-needed: people choose the AI model on the Evaluate and Compare pages, from the list in `constants.py` (`MODELS`).
+Put them in `.env` (copied from `.env.sample`, git-ignored) or in your host's environment settings. Set at least one;
+leave the others empty.
 
-| Variable | Required | Meaning |
-|---|---|---|
-| `MAI_BASE_URL` | yes | Gateway URL for the environment, ending in `/`. QA `https://apiqa2.worldbank.org/posit-mai/conversationalai/`, Production `https://api.worldbank.org/posit-mai/conversationalai/`. |
-| `MAI_OPENAI_ENDPOINT` | for ChatGPT 6 Luna, ChatGPT 5.6 Luna | `https://azapim.worldbank.org/maifactory/openai/responses` (QA: `azapimqa`). |
-| `MAI_GEMINI_ENDPOINT` | for Gemini 3.8 Flash, 3.7 Flash, 3.5 Flash Lite | `https://azapim.worldbank.org/maifactory/gemini/interactions` (QA: `azapimqa`). |
-| `MAI_CLAUDE_ENDPOINT` | for Claude Haiku 5.5 | `https://azapim.worldbank.org/maifactory/bedrock/model/us.anthropic.<model>/converse` (QA: `azapimqa`). Keep `<model>`: the app puts the chosen Claude model there. |
+| Variable | Unlocks these models in the picker |
+|---|---|
+| `OPENAI_API_KEY` | GPT-6 Astra, GPT-6.1 Sol, GPT-6 Luna, and the older GPT-5.6 Luna |
+| `ANTHROPIC_API_KEY` | Claude Opus 5.5, Claude Sonnet 5.5, Claude Haiku 5.5, and the older Claude Haiku 4.5 |
+| `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) | Gemini 4 Argon, Gemini 3.8 Flash, Gemini 3.5 Flash-Lite, and the older Gemini 3.1 Flash-Lite |
+| `MISTRAL_API_KEY` | Mistral Large, Medium and Small (latest), and the older Mistral Large 3 |
 
-At least one endpoint is needed. A provider without its endpoint stays in the model picker, marked "not set up", and
-cannot be chosen. Posit Connect sets `CONNECT_CONTENT_GUID` itself (sent as `X-Posit-App-Id`); never set it by hand.
-To offer another model from the gateway's allowed list, add it to `MODELS` in `constants.py`.
+People choose the model on the Evaluate and Compare pages; only the models of providers with a key are listed. The
+model pre-selected is the first of GPT-6.1 Sol, Claude Sonnet 5.5, Gemini 3.8 Flash and Mistral Medium whose provider has
+a key. The lists are `MODELS` and `DEFAULT_MODELS` in `constants.py`: edit them when a provider releases or retires a model.
 
-**Note:** this works only when the app runs on Posit Connect. It does not work on a local machine.
+Optional `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, `GEMINI_BASE_URL` and `MISTRAL_BASE_URL` send a provider's calls to
+another address, for example a company proxy.
 
 ### Optional app settings
 
@@ -82,8 +83,8 @@ All have sensible defaults; a `.env` file is read if present (see `.env.sample`)
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AI_REQUESTS_PER_MINUTE` | `3500` | Calls per minute for each model, shared by all visitors using it. |
-| `AI_TOKENS_PER_MINUTE` | `35000` | Token budget per minute for each model, shared by all visitors using it (`0` switches it off). Usually the tighter of the two. |
+| `AI_REQUESTS_PER_MINUTE` | `50` | Calls per minute for each model, shared by all visitors using it. Set it to your account tier's limit. |
+| `AI_TOKENS_PER_MINUTE` | `0` | Token budget per minute for each model (`0` switches it off). Set it when your tier's token limit is the tighter one. Refused calls (429) are waited out and retried either way. |
 | `AI_PARALLEL_CALLS` | `3` | Worker threads per analysis for the reading step. |
 | `MAX_UPLOAD_MB` | `50` | Per-file limit. The browser refuses files above 3× this before sending. |
 | `SESSION_IDLE_MINUTES` | `15` | A visitor with no heartbeat for this long is forgotten. |
@@ -121,7 +122,9 @@ ai/                    everything that talks to a model
   client.py            provider lookup, pacing, retries (provider-neutral)
   ratelimit.py         RateLimiter (requests and tokens per minute, adaptive) + call_with_retries
   types.py             Attachment, DocInfo, error types, Cancelled
-  mai_llm.py           the model provider: GPT, Claude or Gemini through mAI, one function per provider
+  llm.py               the provider entry: API keys, models on offer, one attempt with the chosen model
+  provider_openai.py, provider_anthropic.py, provider_gemini.py, provider_mistral.py   one module per provider API
+  provider_common.py   what they share: JSON-schema helper, token usage, SDK errors → app errors
   schemas.py           JSON schemas for the four tasks + tolerant JSON loading
   prompt.py            all prompts
   tasks.py             describe / extract / tag / score: the four jobs, with splitting and second passes
@@ -138,7 +141,7 @@ utils/                 one module per page plus shared helpers
   session.py           in-memory sessions, uploads and background jobs
   (constants.py and page_constants.py are at the top level, above)
 docs/                  developer documentation + samples/ (fictional test documents)
-tests/                 pytest suite, stand-in model, fake mAI gateway, live smoke test
+tests/                 pytest suite, stand-in model, fake provider APIs, live smoke test
 ```
 
 ## What the model does, and what it does not
@@ -161,8 +164,9 @@ pytest                       # everything (about 90 seconds; the browser tests a
 pytest -m "not ui"           # skip the headless-browser tests (about 10 seconds)
 ```
 
-No test calls the network. The model is replaced by `tests/fake_llm.py` (in-process) or `tests/fake_mai_server.py`
-(a local stand-in for the mAI gateway that exercises `ai/mai_llm.py` for all three model families, including error mapping).
+No test calls the network. The model is replaced by `tests/fake_llm.py` (in-process) or `tests/fake_llm_server.py`
+(a local stand-in for the OpenAI, Anthropic, Gemini and Mistral APIs that exercises `ai/llm.py` and the four provider
+modules with the real SDKs, including error mapping).
 What the tests cannot tell you is how the *real* model behaves on your documents. `tests/live_check.py` is for that.
 See [docs/testing.md](docs/testing.md).
 
@@ -170,8 +174,10 @@ See [docs/testing.md](docs/testing.md).
 
 - **Model quality is the ceiling.** Prompts are tuned on the sample documents and structure, not on a labelled benchmark.
   Run `tests/live_check.py` on a few of your own budgets and read the reasons column before relying on numbers.
-- **Scanned PDFs**: table and scanned pages are also attached to the model call as PDF pages, so the model can read them visually; accuracy is lower and the user is told.
+- **Scanned PDFs**: table and scanned pages are also attached to the model call as PDF pages, so the model can read them visually; accuracy is lower and the user is told. Mistral's chat models take documents only as public links, so with Mistral only the extracted text is sent.
 - **One process.** Sessions, jobs and the rate limiter are in process memory. Do not run multiple workers (docs/deployment.md).
+- **Your keys, your costs.** Every analysis is paid from the API key of the provider chosen. A large national budget can
+  take hundreds of thousands of tokens; try a small document first.
 - **No currency conversion**; amounts keep the document's currency and unit.
 - **Large documents** are read in sections. A section or batch that is too large for the model is split automatically,
   and page images too large to attach are left out (the text is still read).

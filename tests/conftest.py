@@ -1,4 +1,4 @@
-"""Shared fixtures. Every test runs with a fast rate limiter, dummy mAI settings and an empty session store."""
+"""Shared fixtures. Every test runs with a fast rate limiter, dummy API keys that lead nowhere and an empty session store."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ SAMPLES = ROOT / "docs" / "samples"
 os.environ.setdefault("AI_REQUESTS_PER_MINUTE", "60000")
 os.environ.setdefault("AI_TOKENS_PER_MINUTE", "0")
 
+import constants as C  # noqa: E402
 from ai import client  # noqa: E402
 from tests.fake_llm import FakeProvider  # noqa: E402
 from utils import session  # noqa: E402
@@ -23,11 +24,10 @@ def _clean(monkeypatch):
     monkeypatch.setenv("AI_REQUESTS_PER_MINUTE", "60000")
     monkeypatch.setenv("AI_TOKENS_PER_MINUTE", "0")
     monkeypatch.setenv("AI_PARALLEL_CALLS", "2")
-    monkeypatch.setenv("MAI_BASE_URL", "http://127.0.0.1:9/posit-mai/conversationalai/")
-    monkeypatch.setenv("MAI_OPENAI_ENDPOINT", "https://azapimqa.example/maifactory/openai/responses")
-    monkeypatch.setenv("MAI_GEMINI_ENDPOINT", "https://azapimqa.example/maifactory/gemini/interactions")
-    monkeypatch.setenv("MAI_CLAUDE_ENDPOINT", "https://azapimqa.example/maifactory/bedrock/model/us.anthropic.<model>/converse")
-    monkeypatch.setenv("CONNECT_CONTENT_GUID", "test-app-guid")
+    for provider in C.PROVIDERS:                          # dummy keys, and an address where nothing answers:
+        monkeypatch.setenv(C.ENV_API_KEYS[provider], "test-key")      # no test can ever reach a real API
+        monkeypatch.setenv(C.ENV_BASE_URLS[provider], "http://127.0.0.1:9")
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     client._limiters.clear()
     session.clear_all()
     yield

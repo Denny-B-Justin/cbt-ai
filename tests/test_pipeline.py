@@ -286,13 +286,13 @@ def test_real_documents_run_through(fake_ai, path):
 
 # ── the AI model the user chose ─────────────────────────────────────────────
 def test_the_chosen_model_reads_tags_and_scores_everything(fake_ai, green_pdf, traditional_pdf):
-    a = analyse_document(green_pdf, "g.pdf", noop_progress, model="gemini-3.7-flash")
-    b = analyse_document(traditional_pdf, "t.pdf", noop_progress, model="gemini-3.7-flash")
+    a = analyse_document(green_pdf, "g.pdf", noop_progress, model="gemini-3.8-flash")
+    b = analyse_document(traditional_pdf, "t.pdf", noop_progress, model="gemini-3.8-flash")
     compare_budgets(a, b)
-    assert {c["model"] for c in fake_ai.calls} == {"gemini-3.7-flash"}
-    assert a.model == "gemini-3.7-flash" and a.model_label == "Gemini 3.7 Flash"
+    assert {c["model"] for c in fake_ai.calls} == {"gemini-3.8-flash"}
+    assert a.model == "gemini-3.8-flash" and a.model_label == "Gemini 3.8 Flash"
 
 
 def test_without_a_choice_the_default_model_is_used(fake_ai, green_pdf):
     a = analyse(green_pdf, "g.pdf")
-    assert a.model == C.DEFAULT_MODEL and {c["model"] for c in fake_ai.calls} == {C.DEFAULT_MODEL}
+    assert a.model == C.DEFAULT_MODELS[0] and {c["model"] for c in fake_ai.calls} == {C.DEFAULT_MODELS[0]}

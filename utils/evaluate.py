@@ -48,18 +48,16 @@ def read_upload(contents: str | None, filename: str | None) -> tuple[bytes | Non
 def not_ready_notice(model: str | None = None) -> html.Div | None:
     """A notice when no model, or the chosen one, can be used; None when all is well."""
     if not client.is_configured():
-        return ui.notice("error", "The analysis service is not set up yet. Please ask the person who manages this tool to finish its set-up.",
-                         "Not available")
+        return ui.notice("error", "The analysis service is not set up yet. Please ask the person who manages this tool to finish its "
+                         "set-up by adding an AI provider's key.", "Not available")
     if model is not None and model not in client.available_models():
         return ui.notice("warn", "%s is not available. Please choose another AI model." % client.model_label(model), "Choose another model")
     return None
 
 
 def model_options() -> list[dict[str, Any]]:
-    """Every model of constants.MODELS; the ones whose provider is not set up are shown but cannot be chosen."""
-    ready = set(client.available_models())
-    return [{"label": m.label if m.id in ready else "%s (%s)" % (m.label, P.MODEL_NOT_SET_UP), "value": m.id,
-             "disabled": m.id not in ready} for m in C.MODELS]
+    """The models of constants.MODELS whose provider has an API key, in that order."""
+    return [{"label": C.MODELS_BY_ID[m].label, "value": m} for m in client.available_models()]
 
 
 def model_picker(component_id: str) -> html.Div:
