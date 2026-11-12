@@ -1,9 +1,10 @@
-# Climate Budget Tagging Tool (AI edition)
+# Climate Budget Tagging Tool: Georgian method
 
-A Plotly Dash application that reads a government budget document (PDF, Word or Excel), has an LLM extract and tag every
-budget line against three taxonomies (**Rio Markers**, **EU Taxonomy** and the **Georgian Taxonomy** of the
-CBT Handbook for Georgia), computes all shares and charts deterministically
-in code, and can score and compare two budgets.
+A Plotly Dash application that tags government budgets with the method of **Climate Budget Tagging in Georgia: Handbook**
+(Ministry of Environmental Protection and Agriculture of Georgia and the World Bank, June 2025). It reads a budget document
+(PDF, Word or Excel), has an LLM extract every budget line and answer the handbook's four guiding questions for it, gives
+each climate-tagged line its CBT code (**CM** mitigation, **CA** adaptation, **CB** both) and its level (**100, 70, 40 or
+20**), computes all shares and charts deterministically in code, and can score and compare two budgets.
 
 It succeeds the rule-based `wb-climate-budget-tagging` app (Excel/CSV in, keyword matching, Databricks storage). What changed:
 
@@ -11,7 +12,7 @@ It succeeds the rule-based `wb-climate-budget-tagging` app (Excel/CSV in, keywor
 |---|---|---|
 | Input | Structured Excel/CSV | PDF, Word or Excel, any layout |
 | Reading the budget | Column mapping | LLM extracts budget lines from text and table pages |
-| Tagging | Keyword counts | LLM judgement per line, keyword taggers kept as a second opinion |
+| Tagging | Keyword counts | LLM judgement per line with the handbook's guiding questions and four levels |
 | Storage | Databricks | None. Memory only, per visitor, deleted when the page closes |
 | Pages | Several | Home, **Evaluate Budget**, **Compare Budget**, Methodology |
 
@@ -95,10 +96,9 @@ browser ──upload (base64)──▶ dcc.Upload callback ──▶ session.sta
    │                                                2. tasks.describe_document     LLM: name, country, year, currency, unit
    │                                                3. tasks.extract_budget_lines  LLM, sections in parallel → raw records
    │                                                4. lines.select_lines          clean, de-duplicate, avoid double counting
-   │                                                5. tasks.tag_budget_lines      LLM, batches of 60 → one verdict per distinct line
-   │                                                5b. tasks.tag_budget_lines_georgia  own prompt, same batches → CM/CA/CB + level
-   │                                                6. reconcile + metrics         verdict + keyword check → tags; shares in pandas
-   └────────────── charts, tables, .xlsx ◀────────  Analysis(rio, eu, summaries, issues)
+   │                                                5. tasks.tag_budget_lines      LLM, batches of 60 → Q1–Q4, level, sector per distinct line
+   │                                                6. tags + metrics              CM/CA/CB, level × amount, CB split 50/50; shares in pandas
+   └────────────── charts, tables, .xlsx ◀────────  Analysis(lines, summary, stats, issues)
 ```
 
 Compare Budget runs steps 1–6 for budget A, then B, then `pipeline.compare_budgets` (step 7: one LLM call that scores both).
@@ -112,19 +112,16 @@ assets/                CSS, session.js (heartbeat + pagehide beacon), logo, favi
 ai/                    everything that talks to a model
   client.py            provider lookup, pacing, retries (provider-neutral)
   ratelimit.py         RateLimiter (requests and tokens per minute, adaptive) + call_with_retries
-  types.py             Attachment, DocInfo, error taxonomy, Cancelled
+  types.py             Attachment, DocInfo, error types, Cancelled
   mai_llm.py           the model provider: GPT, Claude or Gemini through mAI, picked by MAI_MODEL
   schemas.py           JSON schemas for the four tasks + tolerant JSON loading
   prompt.py            all prompts
   tasks.py             describe / extract / tag / score: the four jobs, with splitting and second passes
 tagging/               everything that decides or computes
   lines.py             record cleaning, merging, hierarchy and double-counting rules
-  rio_tagger.py        keyword tagger (Rio Markers)         ┐ ported from the previous version,
-  eu_tagger.py         keyword tagger (EU Taxonomy)         │ used as a second opinion only
-  keywords.py, cofog.py, matcher.py                         ┘
-  reconcile.py         verdict + second opinion → final tag, confidence, "decided by"
-  georgia.py           Georgian Taxonomy: line rows (level × amount, CB split 50/50) and every number its charts use
-  metrics.py           shares, summaries, fallback scoring rubric
+  models.py            Verdict: the AI's answer for one line, made consistent
+  tags.py              line rows: CBT code, level, "decided by", climate / mitigation / adaptation amounts
+  metrics.py           shares, the grouped tables behind every chart, fallback scoring rubric
   pipeline.py          analyse_document, compare_budgets, Analysis dataclass
 utils/                 one module per page plus shared helpers
   home.py, evaluate.py, compare.py, methodology.py   pages and their callbacks
@@ -142,8 +139,7 @@ tests/                 pytest suite, stand-in model, fake mAI gateway, live smok
 |---|---|---|
 | Describe | name, country, year, currency, unit | fallbacks when absent or odd |
 | Extract | which text rows are budget lines; amount, kind (programme / function / ministry / category / total), page | amount parsing, dropping totals, merging, hierarchy, duplicates, negative amounts |
-| Tag | Rio mitigation 0–2, adaptation 0–2, EU objectives, brown, administrative, confidence, one-line reason | normalisation to a consistent verdict; final tag via `reconcile` |
-| Tag (Georgian) | the four guiding questions, level class, sector, function, service cost, liveable wording | level snapped to 20/40/70/100 for tagged lines (0 otherwise); CB split; climate amounts |
+| Tag | the four guiding questions (Q1–Q4), level class, sector, function, service cost, liveable wording, confidence, one-line reason | CM/CA/CB from Q1–Q4; level snapped to 100/70/40/20 for tagged lines (0 otherwise); service costs untagged; CB split; climate amounts |
 | Score | 0–100 and a sentence per budget, a two-sentence comparison | clamping to ±15 of the fixed rubric (`SCORE_GUARD`) |
 | Everything else | – | all sums, shares, charts, tables, Excel files |
 
@@ -177,7 +173,7 @@ See [docs/testing.md](docs/testing.md).
 
 - [docs/architecture.md](docs/architecture.md) – modules, data flow, threading, routing
 - [docs/ai-layer.md](docs/ai-layer.md) – provider interface, pacing and retries, prompts
-- [docs/tagging-logic.md](docs/tagging-logic.md) – line cleaning, taggers, reconciliation table, metrics
+- [docs/tagging-logic.md](docs/tagging-logic.md) – line cleaning, the guiding questions and four levels, CBT codes, metrics
 - [docs/scoring.md](docs/scoring.md) – the 0–100 score
 - [docs/sessions-and-privacy.md](docs/sessions-and-privacy.md) – session lifecycle, what is kept and what leaves the server
 - [docs/testing.md](docs/testing.md) – test layout, stand-ins, what is and is not covered

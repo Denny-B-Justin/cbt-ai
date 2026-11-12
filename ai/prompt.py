@@ -112,68 +112,8 @@ If the section has no budget lines return {{"lines": []}}.
 </document>""".format(", ".join(context), pages_label, attach_note, text)
 
 
-# ── 3. Tag the lines ────────────────────────────────────────────────────────
-def _eu_examples() -> str:
-    return "\n".join("  {} - {}".format(k, v) for k, v in {
-        "mitigation": "reducing greenhouse-gas emissions: renewable energy, energy efficiency, clean public transport, cycling, rail, forests that store carbon",
-        "adaptation": "reducing climate risks: flood protection, drought resilience, early warning, climate-proof infrastructure, coastal protection",
-        "water": "water and marine resources: water and wastewater treatment, water quality, leak reduction, wetlands, sustainable fishing",
-        "circular_economy": "circular economy: recycling, waste reduction, composting, reuse and repair, resource efficiency",
-        "pollution": "pollution prevention: air quality, soil clean-up, hazardous waste, chemical safety, noise reduction",
-        "biodiversity": "biodiversity and ecosystems: protected areas, national parks, habitat and wildlife conservation, forest management, restoration",
-    }.items())
-
-
-TAG_SYSTEM = """You tag government budget lines for climate relevance with two frameworks, like an experienced climate-budget analyst.
-
-RIO MARKERS - score climate change mitigation and climate change adaptation separately, each 0, 1 or 2.
-  2 = Principal: climate is the main purpose of the line. What the line funds is itself a climate measure, or its wording states a climate objective (for example "solar power plant", "flood defences for climate resilience", "implementation of the national climate plan").
-  1 = Significant: the line clearly helps mitigation or adaptation, but climate is one of several purposes and not the main one (for example "rural roads with better drainage against floods", "irrigation modernisation", "energy-efficient school buildings").
-  0 = Not targeted: no clear contribution, or only a very indirect or incidental one.
-  Mitigation reduces or avoids greenhouse-gas emissions or increases carbon sinks. Adaptation reduces vulnerability to climate impacts or builds resilience.
-
-EU TAXONOMY - list every environmental objective the line serves, most important first. The objectives are:
-%s
-
-BROWN - set brown to true only when the main activity is fossil-fuel based or clearly harmful to the environment (coal, oil and gas extraction or fossil power, fossil-fuel subsidies, mining and quarrying, cement or petrochemical production, incineration, landfill, deforestation). A brown line serves no objective: leave eu_objectives empty.
-
-ADMINISTRATIVE - set administrative to true only when the whole line is routine running cost with no substantive programme: salaries, pensions, office costs, general administration, debt service or interest, legal or audit services, routine maintenance. Then all scores are 0, eu_objectives is empty and brown is false.
-
-Rules
-- Judge only from what the line says (title, description, ministry, function). A ministry name alone is not evidence.
-- Be conservative. If you hesitate between two levels, choose the lower one and lower your confidence.
-- Do not tag a line only because it contains a fashionable word; look at what the money is spent on.
-- confidence: "high" when the wording is clear, "medium" when you inferred part of it, "low" when the line is vague.
-- rationale: one plain sentence of at most 25 words that quotes the key words of the line behind your decision.
-- Return exactly one entry for every line id you are given, using the same id.
-
-Examples
-- "Construction of a 50 MW solar power plant" -> rio_mitigation 2, rio_adaptation 0, eu_objectives ["mitigation"], brown false, administrative false, confidence high.
-- "Rehabilitation of rural roads including drainage to withstand floods" -> rio_mitigation 0, rio_adaptation 1, eu_objectives ["adaptation"], confidence medium.
-- "Municipal wastewater treatment plant" -> rio_mitigation 0, rio_adaptation 0, eu_objectives ["water", "pollution"], confidence high.
-- "Construction of primary schools" -> all 0, eu_objectives [], confidence high.
-- "Salaries and pensions of ministry staff" -> administrative true, all 0.
-- "Modernisation of a coal-fired power station" -> brown true, eu_objectives [], all Rio scores 0.
-""" % _eu_examples() + UNTRUSTED
-
-
-def tag_prompt(items: Sequence[dict[str, str]]) -> str:
-    rows: list[str] = []
-    for it in items:
-        parts = ["Title: %s" % it["title"]]
-        if it.get("ministry"):
-            parts.append("Ministry: %s" % it["ministry"])
-        if it.get("description"):
-            parts.append("Description: %s" % it["description"])
-        if it.get("function_code"):
-            parts.append("Function: %s" % it["function_code"])
-        rows.append("[{}] {}".format(it["id"], " | ".join(parts)))
-    return "Tag each of these budget lines.\n\n<document>\n%s\n</document>" % "\n".join(rows)
-
-
-# ── 3b. Tag the lines with the Georgian method ──────────────────────────────
-# Its own call and its own instructions: nothing here is shared with TAG_SYSTEM (Rio Markers and EU Taxonomy).
-GEO_FEW_SHOT = [
+# ── 3. Tag the lines (the handbook's Steps 1-3) ─────────────────────────────
+FEW_SHOT = [
     ("Reforestation subprogram that aims to increase the GHG sink potential",
      "q1 true, q2 true; climate_level 100 (Forest)"),
     ("Refurbishment of public schools: thermally insulated windows and a central heating system",
@@ -212,13 +152,13 @@ GEO_FEW_SHOT = [
      "livability_floor true; q1 to q4 false; climate_level 20 (Cross-cutting); wording only, counted as adaptation by the code"),
 ]
 
-GEO_TAG_SYSTEM = """You are a climate budget tagging analyst. Apply the method of "Climate Budget Tagging in Georgia: Handbook" (MEPA and World Bank, June 2025) to budget lines (programmes, subprograms and activities). Each line has a title and, when known, its ministry or agency, a description and a function. Write your rationale in English even if the line is in another language.
+TAG_SYSTEM = """You are a climate budget tagging analyst. Apply the method of "Climate Budget Tagging in Georgia: Handbook" (MEPA and World Bank, June 2025) to budget lines (programmes, subprograms and activities). Each line has a title and, when known, its ministry or agency, a description and a function. Write your rationale in English even if the line is in another language.
 
 DEFINITIONS
 - Mitigation (CM): actions that reduce, limit or absorb greenhouse gases (GHG): more efficient use of fossil fuels, switching to solar or wind, improving building insulation, expanding forests and other sinks. A line qualifies if it avoids or reduces GHG emissions or increases sequestration.
 - Adaptation (CA): actions that reduce climate risk or vulnerability and increase resilience. Climate hazards: extreme temperatures, heavy precipitation, landslides, mudflows, flash floods, storms, droughts, sea-level rise on coasts. Priority adaptation sectors: energy, transport, agriculture, forest, coastal resorts, water, tourism, health. Most vulnerable resources: surface and ground water, mountain ecosystems, biodiversity. A priority sector alone is not enough: the activity itself must reduce vulnerability or increase resilience to the hazards.
 - Both (CB): the line has mitigation and adaptation components.
-- Liveable or habitable wording (convention of this tool, not in the handbook): a line named for liveable, livable or habitable cities, settlements or environments (for example "Liveable Cities Investment Program") and with no explicit climate measure otherwise. Rio markers and the EU taxonomy would not tag it, but at least 20 percent of it is counted as climate adaptation. Set livability_floor to true for such a line; the code then sets adaptation and level 20. A line without such wording never gets livability_floor.
+- Liveable or habitable wording (convention of this tool, not in the handbook): a line named for liveable, livable or habitable cities, settlements or environments (for example "Liveable Cities Investment Program") and with no explicit climate measure otherwise. At least 20 percent of it is counted as climate adaptation. Set livability_floor to true for such a line; the code then sets adaptation and level 20. A line without such wording never gets livability_floor.
 
 GHG SOURCES BY SECTOR (first guiding question)
 Energy: burning, leaking or evaporating fossil fuels; transporting and storing CO2. Transport: fossil fuel use or leakage. Building: fossil fuel use. Industry: fossil fuels; producing minerals, chemicals, metals, electronics; lubricants, solvents, ozone-depleting-substance substitutes. Agriculture: fossil fuels, enteric fermentation, manure management, nitrogen fertiliser. Waste: fossil fuels, solid waste disposal, biological treatment, incineration and open burning, wastewater treatment and discharge. Forest: deforestation, conversion of forest land, soil degradation. Removals: forests and other sinks.
@@ -262,11 +202,11 @@ LABELLED EXAMPLES (from the handbook)
 
 OUTPUT
 Return exactly one entry for every line id you are given, using the same id. confidence is "high", "medium" or "low". rationale: at most 20 words, quoting the key words of the line behind your decision.
-""" % (", ".join(C.GEO_SECTORS), ", ".join(C.GEO_FUNCTIONS),
-       "\n".join('- "{}": {}'.format(p, v) for p, v in GEO_FEW_SHOT)) + UNTRUSTED
+""" % (", ".join(C.SECTORS), ", ".join(C.FUNCTIONS),
+       "\n".join('- "{}": {}'.format(p, v) for p, v in FEW_SHOT)) + UNTRUSTED
 
 
-def geo_tag_prompt(items: Sequence[dict[str, str]]) -> str:
+def tag_prompt(items: Sequence[dict[str, str]]) -> str:
     rows: list[str] = []
     for it in items:
         parts = ["Title: %s" % it["title"]]
@@ -277,21 +217,23 @@ def geo_tag_prompt(items: Sequence[dict[str, str]]) -> str:
         if it.get("function_code"):
             parts.append("Function: %s" % it["function_code"])
         rows.append("[{}] {}".format(it["id"], " | ".join(parts)))
-    return "Tag each of these budget lines with the Georgian method.\n\n<document>\n%s\n</document>" % "\n".join(rows)
+    return "Tag each of these budget lines.\n\n<document>\n%s\n</document>" % "\n".join(rows)
 
 
 # ── 4. Score and compare ────────────────────────────────────────────────────
-SCORE_SYSTEM = """You are a senior climate-budget analyst. You give each budget an overall climate score from 0 to 100 and explain it in plain language for government officials.
+SCORE_SYSTEM = """You are a senior climate-budget analyst working with the Georgian climate budget tagging method. You give each budget an overall climate score from 0 to 100 and explain it in plain language for government officials.
+
+In this method every climate-tagged budget line is marked CM (mitigation), CA (adaptation) or CB (both) and placed in one of four levels, 100, 70, 40 or 20: the share of the line counted as climate. The climate share of a budget is the sum of those counted parts divided by the whole budget.
 
 The score weighs four things:
-1. How much of the budget supports climate goals (the climate-weighted share): the most important part.
-2. How directly: whether climate is the main purpose (principal) or a side benefit (significant).
-3. How broad: whether both mitigation and adaptation are covered and how many of the six EU environmental objectives are served.
-4. Harmful spending: fossil-fuel or polluting spending lowers the score.
+1. How much of the budget is climate spending (the climate share): the most important part.
+2. How directly: whether the climate spending sits in lines at levels 100 and 70 (climate is what the line is about) or mostly at levels 40 and 20 (a part or an indirect link).
+3. Balance: whether both mitigation and adaptation are funded.
+4. Breadth: how many sectors carry climate spending.
 
 Calibration
-  0-10 almost no climate relevance; 10-30 small share, mostly side benefits; 30-60 a meaningful share with some principal climate spending; 60-85 a large share, mostly principal and broad; 85-100 exceptional.
-Use the numbers you are given. A budget with a clearly higher climate-weighted share and no more harmful spending must not score lower than the other. Scores of two budgets should differ only as much as the evidence differs.
+  0-10 almost no climate spending; 10-30 a small share, mostly at low levels; 30-60 a meaningful share with some lines at high levels; 60-85 a large share, mostly at high levels and broad; 85-100 exceptional.
+Use the numbers you are given. A budget with a clearly higher climate share must not score lower than the other. Scores of two budgets should differ only as much as the evidence differs.
 Write each reason as one plain sentence (at most 30 words) without technical terms. The summary is two short sentences comparing the budgets.
 """ + UNTRUSTED
 
@@ -301,14 +243,12 @@ def score_prompt(briefs: Sequence[dict]) -> str:
     for b in briefs:
         lines = ["Budget {}: {}".format(b["label"], b["name"]),
                  "  budget lines assessed: %d (shares are by %s)" % (b["lines"], b["basis"]),
-                 "  climate-weighted share: %s" % b["weighted_share"],
-                 "  principal share: {}; significant share: {}".format(b["principal_share"], b["significant_share"]),
+                 "  climate share: %s" % b["climate_share"],
                  "  mitigation share: {}; adaptation share: {}".format(b["mitigation_share"], b["adaptation_share"]),
-                 "  EU green share: {}; brown share: {}".format(b["green_share"], b["brown_share"]),
-                 "  EU objectives served (share of budget): %s" % b["objectives"]]
-        if b.get("top_green"):
-            lines.append("  largest climate-relevant lines: %s" % "; ".join(b["top_green"]))
-        if b.get("top_brown"):
-            lines.append("  largest harmful lines: %s" % "; ".join(b["top_brown"]))
+                 "  climate spend at levels 100 and 70: %s" % b["high_level_share"],
+                 "  climate-tagged lines: CM {}, CA {}, CB {}".format(b["cm_lines"], b["ca_lines"], b["cb_lines"]),
+                 "  sectors with climate spending: %s" % b["sectors"]]
+        if b.get("top_climate"):
+            lines.append("  largest climate lines: %s" % "; ".join(b["top_climate"]))
         blocks.append("\n".join(lines))
     return "Score these budgets.\n\n<document>\n%s\n</document>" % "\n\n".join(blocks)

@@ -41,7 +41,6 @@
   --warn: #9A5B00;    --warn-bg: #FFF3DF;
   --bad: #B3261E;     --bad-bg: #FDEAE8;
   --info: #2F5D50;    --info-bg: #E9F2EC;
-  --brown: #8B4513;
   --tag-a: #1B6B3A;   --tag-b: #EB6834;
 
   --radius: 8px;
@@ -224,7 +223,6 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 .kpi-sub { font-size: 12.5px; color: var(--ink-mute); overflow-wrap: anywhere; }
 .kpi-primary .kpi-value { color: var(--indigo); }
 .kpi-primary { background: linear-gradient(180deg, #F4F9F5, #fff); }
-.kpi-brown .kpi-value { color: var(--brown); }
 
 /* 8. Results, charts, tables --------------------------------------------------------- */
 

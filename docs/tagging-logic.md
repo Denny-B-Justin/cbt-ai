@@ -49,65 +49,52 @@ Everything dropped is counted in `Selection.stats` and shown in the Evaluate pag
 `pipeline._unique_items` keys lines on (ministry, title, description, function code), lower-cased. The model tags each
 distinct key once; the verdict is copied to every line with the same key.
 
-## 4. The two keyword taggers (second opinion)
+## 4. The tag of a line (`ai/tasks.py::verdict_from_row`, `tagging/tags.py`)
 
-`RioMarkerTagger` and `EUTaxonomyTagger` are ported from the previous version (`keywords.py`, `cofog.py`, `matcher.py`).
-They return a result plus a method label (`KEYWORDS`, `EXCLUSION`, or `PREDETERMINED` when the line carries a COFOG function
-code: division 05 "environmental protection" is rated principal, the other known divisions are rated neutral). `matcher.py` matches whole words and phrases with simple plural handling (`s`, `es`,
-consonant-`y` → `ies`) and returns the surface form it matched, which is shown in rationales.
-Their vocabularies differ (the Rio lists are stricter on adaptation than the EU lists); disagreement lowers confidence, it
-does not change the model's tag, except in the cases below.
+The method is *Climate Budget Tagging in Georgia: Handbook* (Ministry of Environmental Protection and Agriculture of
+Georgia and the World Bank, June 2025), Steps 1–3. The model receives `ai/prompt.py::TAG_SYSTEM`: the handbook's
+definitions, GHG sources by sector, the four guiding questions, the four levels, the salary and service-cost rules and
+its labelled examples. For each line it answers Q1–Q4, picks a level, a sector and a government function (COFOG
+division), flags service costs and liveable / habitable wording, and gives a confidence and a one-line reason.
 
-## 5. Reconciliation (`tagging/reconcile.py`)
+`verdict_from_row` makes the answer consistent (it is the only place these rules live):
 
-The model's verdict is primary. The keyword result can confirm it, lower its confidence, or flag the line. **Keywords never
-make a line greener.**
+- **Mitigation** = Q1 and Q2; **adaptation** = Q3 and Q4. A measure without its link (Q2 without Q1) does not count.
+- **Service-oriented** lines are not tagged (no code, no level), whatever the questions say.
+- **Liveable or habitable wording** alone (a rule of this tool, not of the handbook) makes the line adaptation at level
+  `FLOOR_LEVEL` (20); with a real measure it only raises the level to at least 20.
+- **Levels are classes.** A climate-tagged line always has one of **100, 70, 40, 20**: the model's number snaps to the
+  nearest class (`snap_level`; ties go lower, 37 → 40), and a tagged line with 0 or no level gets 20. A line that is not
+  climate-tagged has level 0 ("Not climate").
+- Unknown sectors become `None`, unknown functions `Not known`, unknown confidence `MEDIUM`.
 
-| Model verdict | Keyword check | Result | `decided_by` | Confidence |
-|---|---|---|---|---|
-| no verdict (model failed for this line) | anything | keyword result | Keyword check only | LOW |
-| administrative | – | Rio 0/0, EU neutral | Routine administration | HIGH if keywords agree (no relevance), else MEDIUM |
-| Rio 0 | marker > 0 | Rio 0 | Needs a second look | LOW |
-| Rio 0 | none (exclusion term) | Rio 0 | Routine administration | model's |
-| Rio 0 | none | Rio 0 | No climate relevance found | model's |
-| Rio > 0 | marker > 0 | model's ratings | Confirmed by both checks | model's if same marker, else ≤ MEDIUM |
-| Rio > 0 | none | model's ratings | AI judgement only | ≤ MEDIUM |
-| brown | green | EU brown | Needs a second look | LOW |
-| brown | brown | EU brown | Fossil or polluting activity | model's |
-| brown | other | EU brown | Fossil or polluting activity | ≤ MEDIUM |
-| objectives | green | EU green with the model's objectives | Confirmed by both checks | model's if same main objective, else ≤ MEDIUM |
-| objectives | brown | EU green (model's objectives) | Needs a second look | LOW |
-| objectives | neutral | EU green | AI judgement only | ≤ MEDIUM |
-| no objectives | green or brown | EU neutral | Needs a second look | LOW |
-| no objectives | neutral | EU neutral | No climate relevance found / Routine administration | model's |
+`tags.tag_row` turns a verdict into the line's columns:
 
-Rio and EU are reconciled independently, so one line can be "Confirmed" in one taxonomy and "AI judgement only" in the other.
-The Rio marker of a line is `max(mitigation, adaptation)`.
+| Column | Value |
+|---|---|
+| `cbt_code` | `CB` (both), `CM` (mitigation), `CA` (adaptation) or `""` |
+| `climate_level` | 100, 70, 40, 20, or 0 when not tagged |
+| `mitigation_share`, `adaptation_share` | `level / 100` to the line's aim; a CB line gets `level / 200` in each, so a line is never counted twice |
+| `tag_method` → `decided_by` | the first that applies: liveable wording only, both measures, mitigation measure, adaptation measure, service cost, GHG or hazard link without a measure, no relevance |
 
-## 6. Numbers (`tagging/metrics.py::summarize`)
+A line the model skipped even after the second pass has no verdict: it is **Not assessed**, not tagged, `LOW`
+confidence, and the user is told how many there are. If the model returns no verdict at all, the analysis stops with an
+error.
+
+`tags.tagged_frame` adds `mitigation_amount`, `adaptation_amount` and `climate_amount` (= amount × share) per line.
+
+## 5. Numbers (`tagging/metrics.py::summarize`)
 
 - **Basis**: amount if any line has an amount, otherwise number of lines (the user is told). Lines without an amount are
   ignored in amount-based shares. Amounts are used as given; currencies are never converted.
-- **Rio**: `principal_share`, `significant_share`, `weighted_share = (principal + 0.4 · significant) / total`,
-  `mitigation_share` / `adaptation_share` (the full share of lines whose mitigation / adaptation rating is above 0; not
-  weighted, and a line rated for both counts in both), counts by deciding rule.
-  The weights are `constants.RIO_WEIGHTS`.
-- **EU**: `green_share`, `brown_share`, per-objective amounts and shares (`objective_shares`; a line serving several
-  objectives counts fully towards each, so objective shares can add up to more than the green share), counts by rule.
-- All charts and the Excel files read these dictionaries and the two frames; nothing is recomputed in the page code.
-
-## 7. Georgian Taxonomy (`tagging/georgia.py`)
-
-Method of *Climate Budget Tagging in Georgia, Handbook* (MEPA and World Bank, June 2025), Steps 1–3. It is a separate model
-call (`ai/prompt.py::GEO_TAG_SYSTEM`) on the same distinct lines; there is no keyword second opinion and it never changes
-the Rio or EU tags.
-
-- The model answers Q1–Q4 and picks a level class. `tasks.geo_verdict_from_row` makes it consistent: mitigation =
-  Q1 and Q2, adaptation = Q3 and Q4; a climate-tagged line always has one of **100, 70, 40, 20** (a 0 or missing level
-  on a tagged line becomes 20, other numbers snap to the nearest class, ties go lower); any other line has level 0.
-- Service-oriented lines are not tagged. A line with only liveable / habitable wording is adaptation at level 20.
-- Climate amount = amount × level / 100; a CB line puts half of it in mitigation and half in adaptation, so a line is
-  never counted more than once. Basis is amount, or number of lines when there are no amounts.
-- `summarize_georgia` returns the headline shares and the grouped tables (level, level × code, sector, ministry,
-  function, decided-by, liveable lines) that the Evaluate page draws. A per-year chart is not drawn: an analysis
-  covers one budget year, so it would repeat the headline share.
+- **Shares of the budget**: `climate_share`, `mitigation_share`, `adaptation_share` (sum of the counted parts ÷ total).
+  Mitigation and adaptation add up to the climate share.
+- **Composition of the climate spend**: `mitigation_of_climate`, `adaptation_of_climate`, `level_of_climate` (share of
+  the climate spend at each level), `high_level_share` (levels 100 and 70).
+- **Counts**: `tagged_lines`, `code_lines` (CM, CA, CB).
+- **Grouped tables** for the charts, all from the same counted parts so they add up: `by_level`, `level_code`
+  (level × CBT code), `by_sector`, `by_ministry`, `by_function`, `sector_levels`, `ministry_levels`, `by_method`
+  (lines and amount per "decided by"), `floor_lines` (lines counted only for liveable wording), and
+  `climate_sectors` (sectors with at least 1 % of the climate spend).
+- The Evaluate page, the Excel file and the comparison read these; nothing is recomputed in page code. There is no
+  per-year chart: an analysis covers one budget year, so it would repeat the headline share.

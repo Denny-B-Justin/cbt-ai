@@ -18,31 +18,31 @@
       "checksum": "3f90102c1a6c14a3f498c090eb1b8901"
     },
     ".env.sample": {
-      "checksum": "ff4d8bbe77c43a99f4e20deb8fdda608"
+      "checksum": "4badce17da6696aeda8cbdd6f2b1da2e"
     },
     "README.md": {
-      "checksum": "4fc48399f757ead74614b5fcf08b5a0a"
+      "checksum": "829a2714123563c36ba941f09d6c1c07"
     },
     "ai/__init__.py": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "ai/client.py": {
-      "checksum": "d2a24ebb96fc366d1a721dd4febd9230"
+      "checksum": "998b53c4d56928c7883821ae6605620e"
     },
     "ai/mai_llm.py": {
-      "checksum": "c1faf93f7012276cf415af94bdca7663"
+      "checksum": "f6838a9fa695d8707889e0e07071ab85"
     },
     "ai/prompt.py": {
-      "checksum": "179f669c6a13729204f19f8373effdf5"
+      "checksum": "b345bc86815d3acd6d573ab7d5bd35eb"
     },
     "ai/ratelimit.py": {
-      "checksum": "f0cc5c552b0888fa45b349c4fe25859e"
+      "checksum": "61363ccf1fd8b31f9a44db6eb9a1ea65"
     },
     "ai/schemas.py": {
-      "checksum": "8b088158bb08559757eeef896d579552"
+      "checksum": "ad0591f898cd6bd3ca1c548be792292e"
     },
     "ai/tasks.py": {
-      "checksum": "a501f0f610d0c7d69ab42b8632c6ddbc"
+      "checksum": "d80f6aed81fb5771c0cda9f7e78f4967"
     },
     "ai/types.py": {
       "checksum": "33655be71473ee7c25976ed70b9401f1"
@@ -87,73 +87,58 @@
       "checksum": "22dcc1327cdaab2eab1c33813339f885"
     },
     "assets/style.css": {
-      "checksum": "928c54fa7eb429cbd552520e5b9b2d78"
+      "checksum": "85149a684d1613752b102f1bbb81209a"
     },
     "tagging/__init__.py": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
-    "tagging/cofog.py": {
-      "checksum": "1407b25b036bd27a92fb4339470739d8"
-    },
-    "tagging/eu_tagger.py": {
-      "checksum": "c29e4b89308b7ba92de58ff687fbb166"
-    },
-    "tagging/keywords.py": {
-      "checksum": "9afa67cc431bdd9c2e869fe3bd485b11"
-    },
     "tagging/lines.py": {
       "checksum": "21c38f60740810ef92e6ae6f57a9e4ce"
     },
-    "tagging/matcher.py": {
-      "checksum": "669a839b3420fe96112398b53116c2e6"
-    },
     "tagging/metrics.py": {
-      "checksum": "d8b722111fb771e04edd162f3c130ff3"
+      "checksum": "9fec19973d6eab1a06f31d10ae627b81"
     },
     "tagging/models.py": {
-      "checksum": "e09469fc28509957c7feb6dbdb061db6"
+      "checksum": "7ea3a34947d1e5507f8fb6d0677d3a25"
     },
     "tagging/pipeline.py": {
-      "checksum": "05c6af3e6335bf9ec7c8da052de8ca54"
+      "checksum": "3a297de96ebbaf2a91d87dead97a8a1f"
     },
-    "tagging/reconcile.py": {
-      "checksum": "62bb151345b3b18485b21cbc58acd5c8"
-    },
-    "tagging/rio_tagger.py": {
-      "checksum": "d0d79f5c2eafd940ae29c714cdf84d64"
+    "tagging/tags.py": {
+      "checksum": "8128497c48058e115d0b633ee2625dfa"
     },
     "utils/__init__.py": {
       "checksum": "d41d8cd98f00b204e9800998ecf8427e"
     },
     "utils/charts.py": {
-      "checksum": "59d6fc57d78ac243460febbfb04bc8c4"
+      "checksum": "77a31c0845e845110e5c3beabee00ae7"
     },
     "utils/compare.py": {
-      "checksum": "5d1d602b309a38e2035a51b22a41dd1d"
+      "checksum": "6b59a830a711687913da6d3e17d0b0c5"
     },
     "utils/components.py": {
-      "checksum": "81d04595b0414129676ea483428bb993"
+      "checksum": "f90ae97c3d1c700b5a07f9725e777638"
     },
     "utils/constants.py": {
-      "checksum": "a1f6de59857429e83018de3cdc243750"
+      "checksum": "fedcad90b0cab6bbc7bb0235b2d9bde1"
     },
     "utils/documents.py": {
-      "checksum": "0896aa5cf91a8744096b18f0ab403e29"
+      "checksum": "12cd21948f7f687b26423f9a250a2104"
     },
     "utils/evaluate.py": {
-      "checksum": "a63979a96d92397e6116f809407f6c92"
+      "checksum": "9084e81e3a37969187d4b1bcb6004359"
     },
     "utils/export.py": {
-      "checksum": "1bd01bbb9822c3d334fc08f7d3404394"
+      "checksum": "e5d82754a1d93d9be9865e73e0a1115a"
     },
     "utils/formatting.py": {
       "checksum": "49a3675c75d929c54bc70003b00e1eb0"
     },
     "utils/home.py": {
-      "checksum": "8fde1827e6a734b3fdb6cb78a90900ce"
+      "checksum": "1926bdb407ad52d6ef92ea38403b8058"
     },
     "utils/methodology.py": {
-      "checksum": "7e76d48a18f29f7ce15299b1c7d934cb"
+      "checksum": "5e51b5a8c74eca65af39b71f416f0869"
     },
     "utils/session.py": {
       "checksum": "829524212962c79567cdfa700be94bcd"

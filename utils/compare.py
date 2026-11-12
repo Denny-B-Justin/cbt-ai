@@ -81,53 +81,37 @@ def _better(a: float | None, b: float | None, higher: bool = True) -> str:
     return "A" if (a > b) == higher else "B"
 
 
-def _objectives(s: dict[str, Any]) -> tuple:
-    shares = {k: v for k, v in (s.get("objective_shares") or {}).items() if (v or 0) >= 0.01}
-    names = [C.EU_LABELS[k] for k in sorted(shares, key=shares.get, reverse=True)]
-    return len(shares), ", ".join(names[:3]) + (" …" if len(names) > 3 else "")
-
-
 def build_rows(a: Analysis, b: Analysis) -> list[Row]:
-    ra, rb, ea, eb = a.rio_summary, b.rio_summary, a.eu_summary, b.eu_summary
-    na, sa = _objectives(ea)
-    nb, sb = _objectives(eb)
+    sa, sb = a.summary, b.summary
 
-    def pct(label: str, key: str, x: dict[str, Any], y: dict[str, Any], higher: bool | None = None) -> Row:
-        return Row(label, fmt_pct(x[key]), fmt_pct(y[key]), _better(x[key], y[key], higher) if higher is not None else "")
+    def pct(label: str, x: Any, y: Any, higher: bool | None = None) -> Row:
+        return Row(label, fmt_pct(x), fmt_pct(y), _better(x, y, higher) if higher is not None else "")
 
+    def lines(label: str, x: int, y: int) -> Row:
+        return Row(label, fmt_int(x), fmt_int(y))
+
+    def sectors(s: dict[str, Any]) -> tuple[str, str]:
+        names = s["climate_sectors"]
+        return "%d" % len(names), ", ".join(names[:3]) + (" …" if len(names) > 3 else "")
+
+    (na, ta), (nb, tb) = sectors(sa), sectors(sb)
+    top = C.LEVELS[0]
     return [
         Row("The documents", group=True),
         Row("Country and year", a.subtitle or "-", b.subtitle or "-"),
-        Row("Budget lines assessed", fmt_int(ra["lines"]), fmt_int(rb["lines"])),
-        Row("Total amount (own currency)", money(a, ra["total_amount"]) if ra["has_amount"] else "-",
-            money(b, rb["total_amount"]) if rb["has_amount"] else "-"),
-        Row("Rio Markers", group=True),
-        pct("Climate share (Rio-weighted)", "weighted_share", ra, rb, True),
-        pct("Principal (2)", "principal_share", ra, rb, True),
-        pct("Significant (1)", "significant_share", ra, rb),
-        pct("Climate change mitigation", "mitigation_share", ra, rb),
-        pct("Climate change adaptation", "adaptation_share", ra, rb),
-        Row("EU Taxonomy", group=True),
-        pct("Green share", "green_share", ea, eb, True),
-        pct("Brown share (lower is better)", "brown_share", ea, eb, False),
-        Row("Environmental objectives served", "%d of %d" % (na, len(C.EU_OBJECTIVES)), "%d of %d" % (nb, len(C.EU_OBJECTIVES)),
-            _better(float(na), float(nb)), sa, sb),
-        *_georgia_rows(a.georgia_summary, b.georgia_summary)]
-
-
-def _georgia_rows(ga: dict[str, Any], gb: dict[str, Any]) -> list[Row]:
-    if not ga or not gb:
-        return []
-    top = C.GEO_LEVELS[0]
-    return [
-        Row(C.KIND_LABELS[C.KIND_GEO], group=True),
-        Row("Climate share (level-weighted)", fmt_pct(ga["climate_share"]), fmt_pct(gb["climate_share"]),
-            _better(ga["climate_share"], gb["climate_share"])),
-        Row("Mitigation", fmt_pct(ga["mitigation_share"]), fmt_pct(gb["mitigation_share"])),
-        Row("Adaptation", fmt_pct(ga["adaptation_share"]), fmt_pct(gb["adaptation_share"])),
-        Row("Climate-tagged lines", fmt_int(ga["tagged_lines"]), fmt_int(gb["tagged_lines"])),
-        Row("Climate spend at %s" % C.GEO_LEVEL_LABELS[top].lower(), fmt_pct(ga["level_of_climate"][top]),
-            fmt_pct(gb["level_of_climate"][top]))]
+        lines("Budget lines assessed", sa["lines"], sb["lines"]),
+        Row("Total amount (own currency)", money(a, sa["total_amount"]) if sa["has_amount"] else "-",
+            money(b, sb["total_amount"]) if sb["has_amount"] else "-"),
+        Row("Climate spending", group=True),
+        pct("Climate share (level-weighted)", sa["climate_share"], sb["climate_share"], True),
+        pct("Mitigation", sa["mitigation_share"], sb["mitigation_share"]),
+        pct("Adaptation", sa["adaptation_share"], sb["adaptation_share"]),
+        pct("Climate spend at levels 100 and 70", sa["high_level_share"], sb["high_level_share"], True),
+        pct("Climate spend at %s" % C.LEVEL_LABELS[top].lower(), sa["level_of_climate"][top], sb["level_of_climate"][top]),
+        Row("Climate-tagged lines", group=True),
+        lines("All climate-tagged lines", sa["tagged_lines"], sb["tagged_lines"]),
+        *[lines(C.CODE_LABELS[c], sa["code_lines"][c], sb["code_lines"][c]) for c in C.CBT_CODES],
+        Row("Sectors with climate spending", na, nb, _better(float(na), float(nb)), ta, tb)]
 
 
 def _head(key: str, a: Analysis) -> html.Th:
@@ -169,15 +153,14 @@ def results_view(result: dict[str, Any]) -> html.Div:
     rows = build_rows(a, b)
     notes = [ui.notice("warn" if i["level"] == "warn" else "info", "Budget {}: {}".format(k, i["message"]))
              for k, x in (("A", a), ("B", b)) for i in x.issues]
-    if a.rio_summary["basis"] != b.rio_summary["basis"]:
+    if a.summary["basis"] != b.summary["basis"]:
         notes.append(ui.notice("warn", "One budget has amounts and the other does not, so its shares are based on the number of budget lines. "
                                "Read the two columns with care.", "The shares are not measured the same way"))
-    ea, eb = a.eu_summary, b.eu_summary
-    labels = ["Rio-weighted share", "Principal (2)", "Significant (1)", "EU green", "EU brown"]
-    ra, rb = a.rio_summary, b.rio_summary
-    shares_a = [ra["weighted_share"], ra["principal_share"], ra["significant_share"], ea["green_share"], ea["brown_share"]]
-    shares_b = [rb["weighted_share"], rb["principal_share"], rb["significant_share"], eb["green_share"], eb["brown_share"]]
-    objectives = [C.EU_LABELS[k] for k in C.EU_OBJECTIVES]
+    sa, sb = a.summary, b.summary
+    labels = ["Climate share", "Mitigation", "Adaptation"]
+    shares_a = [sa["climate_share"], sa["mitigation_share"], sa["adaptation_share"]]
+    shares_b = [sb["climate_share"], sb["mitigation_share"], sb["adaptation_share"]]
+    levels = [C.LEVEL_LABELS[lv] for lv in C.LEVELS]
     return html.Div(className="results", children=[
         html.Div(className="result-head", children=[
             html.Div([html.H3("Budget A and Budget B side by side", className="result-title"),
@@ -191,9 +174,9 @@ def results_view(result: dict[str, Any]) -> html.Div:
                                                                        comparison.reasons[k]]) for k in KEYS]),
         html.Div(className="chart-grid", children=[
             ui.chart_card("Climate shares", charts.fig_compare(labels, shares_a, shares_b, "Share of the budget")),
-            ui.chart_card("Environmental objectives served", charts.fig_compare(
-                objectives, [ea["objective_shares"].get(k) for k in C.EU_OBJECTIVES], [eb["objective_shares"].get(k) for k in C.EU_OBJECTIVES],
-                "Share of the budget (a line can serve several)"))])])
+            ui.chart_card("Where the climate spend comes from", charts.fig_compare(
+                levels, [sa["level_of_climate"][lv] for lv in C.LEVELS], [sb["level_of_climate"][lv] for lv in C.LEVELS],
+                "Share of each budget's climate spend"))])])
 
 
 # ── callbacks ───────────────────────────────────────────────────────────────

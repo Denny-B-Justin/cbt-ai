@@ -49,8 +49,10 @@ def line_rows(prompt, n=2):
 
 def tag_rows(prompt, skip=()):
     ids = [int(x) for x in re.findall(r"^\[(\d+)\] Title", prompt, re.M)]
-    return {"tags": [{"id": i, "rio_mitigation": 1, "rio_adaptation": 0, "eu_objectives": ["mitigation"], "brown": False,
-                      "administrative": False, "confidence": "high", "rationale": "ok"} for i in ids if i not in skip]}
+    return {"tags": [{"id": i, "q1_ghg_related": True, "q2_mitigation_measure": True, "q3_climate_hazard_related": False,
+                      "q4_adaptation_measure": False, "sector": "Energy", "function": "Economic affairs", "climate_level": 70,
+                      "livability_floor": False, "service_oriented": False, "confidence": "high", "rationale": "ok"}
+                     for i in ids if i not in skip]}
 
 
 # ── describe ────────────────────────────────────────────────────────────────
@@ -208,7 +210,7 @@ def test_every_line_gets_a_verdict(use_provider):
     provider = use_provider(Scripted(lambda k, p, a: tag_rows(p)))
     verdicts = tasks.tag_budget_lines(items(130), noop_progress)
     assert sorted(verdicts) == list(range(1, 131)) and len(provider.calls) == 3
-    assert verdicts[1].rio_mitigation == 1 and verdicts[1].eu_objectives == ["mitigation"] and verdicts[1].confidence == C.CONF_HIGH
+    assert verdicts[1].mitigation and verdicts[1].level == 70 and verdicts[1].confidence == C.CONF_HIGH
 
 
 def test_lines_the_ai_skipped_are_asked_again(use_provider):
@@ -231,7 +233,7 @@ def test_lines_that_stay_missing_are_left_out_not_invented(use_provider):
 
 def test_unknown_ids_and_junk_rows_are_ignored(use_provider):
     def answer(kind, prompt, attachments):
-        rows = tag_rows(prompt)["tags"] + [{"id": 999, "rio_mitigation": 2}, {"id": "x"}, "junk", {"nothing": 1}]
+        rows = tag_rows(prompt)["tags"] + [{"id": 999, "climate_level": 100}, {"id": "x"}, "junk", {"nothing": 1}]
         return {"tags": rows}
     use_provider(Scripted(answer))
     assert sorted(tasks.tag_budget_lines(items(3), noop_progress)) == [1, 2, 3]
@@ -262,12 +264,12 @@ def test_progress_counts_lines(use_provider):
 
 
 @pytest.mark.parametrize("row,expected", [
-    ({"rio_mitigation": 5, "rio_adaptation": -3, "eu_objectives": ["water", "water", "nonsense"], "confidence": "LOW"},
-     dict(rio_mitigation=2, rio_adaptation=0, eu_objectives=["water"], confidence="LOW")),
-    ({"rio_mitigation": "2", "administrative": True, "eu_objectives": ["water"], "brown": True},
-     dict(rio_mitigation=0, eu_objectives=[], brown=False, administrative=True)),
-    ({"rio_mitigation": 2, "brown": True, "eu_objectives": ["mitigation"]}, dict(rio_mitigation=0, eu_objectives=[], brown=True)),
-    ({"rio_mitigation": None, "confidence": "certain"}, dict(rio_mitigation=0, confidence="MEDIUM")),
+    ({"q1_ghg_related": "true", "q2_mitigation_measure": "yes", "climate_level": "100", "confidence": "LOW"},
+     dict(mitigation=True, adaptation=False, level=100, confidence="LOW")),
+    ({"q3_climate_hazard_related": True, "q4_adaptation_measure": True, "climate_level": 70, "service_oriented": True},
+     dict(adaptation=False, level=0, service_oriented=True)),
+    ({"q2_mitigation_measure": True, "climate_level": 40}, dict(mitigation=False, level=0)),
+    ({"climate_level": None, "confidence": "certain", "sector": "Space"}, dict(level=0, confidence="MEDIUM", sector="None")),
 ])
 def test_verdicts_are_made_consistent(row, expected):
     v = tasks.verdict_from_row(row)
@@ -277,8 +279,8 @@ def test_verdicts_are_made_consistent(row, expected):
 
 # ── score ───────────────────────────────────────────────────────────────────
 def briefs():
-    base = dict(name="Budget", lines=10, basis="amount", weighted_share="20.0%", principal_share="10.0%", significant_share="25.0%",
-                mitigation_share="15.0%", adaptation_share="5.0%", green_share="12.0%", brown_share="1.0%", objectives="mitigation 10%")
+    base = dict(name="Budget", lines=10, basis="amount", climate_share="20.0%", mitigation_share="15.0%", adaptation_share="5.0%",
+                high_level_share="60.0%", cm_lines=3, ca_lines=2, cb_lines=1, sectors="Energy, Water", top_climate=["Solar park"])
     return [dict(base, label="A"), dict(base, label="B")]
 
 

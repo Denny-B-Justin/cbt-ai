@@ -137,10 +137,11 @@ def test_methodology_opens_in_a_new_tab_and_is_plain_language(page, base):
     guide.wait_for_selector(".doc-layout")
     assert "page=methodology" in guide.url and page.url.endswith("page=home")
     text = guide.inner_text("body")
-    for heading in ("Rio Markers", "EU Taxonomy", "Georgian Taxonomy", "The overall score", "Spending we do not count"):
+    for heading in ("The four guiding questions", "The four levels", "What counts and what does not", "The overall score",
+                    "Climate Budget Tagging in Georgia"):
         assert heading in text
     assert not TECHNICAL_WORDS.search(text), TECHNICAL_WORDS.search(text).group(0)
-    assert len(guide.query_selector_all(".doc-toc a")) == 11
+    assert len(guide.query_selector_all(".doc-toc a")) == 10
 
 
 def test_how_it_works_button_also_opens_a_new_tab(page, base):
@@ -158,39 +159,23 @@ def test_unknown_pages_say_so_kindly(page, base):
 
 
 # ── evaluate ────────────────────────────────────────────────────────────────
-def test_evaluate_shows_both_taxonomies(page, base, fake_ai):
+def test_evaluate_shows_the_climate_tags_and_charts(page, base, fake_ai):
     run_evaluate(page, base)
     text = page.inner_text(".results")
-    for expected in ("Rio Markers", "EU Taxonomy", "Principal", "Significant", "Green", "Brown", "Mitigation", "Adaptation",
-                     "How each tag was decided"):
+    for expected in ("Climate share", "Mitigation", "Adaptation", "Budget lines by CBT code", "Where the climate spend comes from",
+                     "Climate amount by level and CBT code", "Top sectors by climate spend, split by level", "How each tag was decided"):
         assert expected in text
-    charts_drawn(page, 5)
+    charts_drawn(page, 15)
     assert len(page.query_selector_all(".results .kpi")) >= 6
     assert page.problems == []
 
 
-def test_evaluate_table_lists_every_line_and_switches_taxonomy(page, base, fake_ai):
+def test_evaluate_table_lists_every_line_with_its_tags(page, base, fake_ai):
     run_evaluate(page, base)
-    page.wait_for_selector("#eval-table-rio")
-    header = page.inner_text("#eval-table-rio")
-    assert "Rio marker" in header and "Decided by" in header and "Why" in header
-    page.click(".segmented .seg-label:has-text('EU Taxonomy')")
-    page.wait_for_selector("#eval-table-eu")
-    assert "Climate tag" in page.inner_text("#eval-table-eu")
-
-
-def test_evaluate_shows_the_georgian_taxonomy_with_its_own_table(page, base, fake_ai):
-    run_evaluate(page, base)
-    text = page.inner_text(".results")
-    for expected in ("Georgian Taxonomy", "Budget lines by CBT code", "Where the climate spend comes from",
-                     "Climate amount by level and CBT code", "Top sectors by climate spend, split by level"):
-        assert expected in text
-    charts_drawn(page, 20)
-    page.click(".segmented .seg-label:has-text('Georgian Taxonomy')")
-    page.wait_for_selector("#eval-table-georgia")
-    header = page.inner_text("#eval-table-georgia")
-    assert "CBT code" in header and "Climate level" in header and "Decided by" in header
-    assert page.problems == []
+    page.wait_for_selector("#eval-table")
+    header = page.inner_text("#eval-table")
+    for name in ("CBT code", "Climate level", "Climate part", "Decided by", "Why"):
+        assert name in header
 
 
 def test_evaluate_download_is_an_excel_file(page, base, fake_ai, tmp_path):
@@ -200,12 +185,12 @@ def test_evaluate_download_is_an_excel_file(page, base, fake_ai, tmp_path):
     target = tmp_path / "out.xlsx"
     dl.value.save_as(str(target))
     assert dl.value.suggested_filename.endswith(".xlsx")
-    assert openpyxl.load_workbook(target).sheetnames == ["About", "Summary", "Rio Markers", "EU Taxonomy", "Georgian Taxonomy"]
+    assert openpyxl.load_workbook(target).sheetnames == ["About", "Summary", "Budget lines"]
 
 
 def test_evaluate_also_reads_word_files(page, base, fake_ai):
     run_evaluate(page, base, PROJECT_DOCX)
-    assert "Early warning system" in page.inner_text("#eval-table-rio") or page.query_selector("#eval-table-rio")
+    assert "Early warning system" in page.inner_text("#eval-table") or page.query_selector("#eval-table")
 
 
 def test_the_loading_bar_names_each_step_and_never_shows_a_percentage(page, base, use_provider):

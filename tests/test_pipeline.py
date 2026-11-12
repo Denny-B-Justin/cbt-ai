@@ -43,24 +43,24 @@ class Variant(FakeProvider):
 
 
 # ── a normal analysis ───────────────────────────────────────────────────────
-def test_green_budget_is_greener_than_the_traditional_one(fake_ai, green_pdf, traditional_pdf):
+def test_the_climate_focused_budget_has_the_larger_climate_share(fake_ai, green_pdf, traditional_pdf):
     g, t = analyse(green_pdf, "g.pdf"), analyse(traditional_pdf, "t.pdf")
-    assert g.rio_summary["weighted_share"] > 10 * t.rio_summary["weighted_share"]
-    assert g.eu_summary["green_share"] > 10 * t.eu_summary["green_share"]
-    assert g.rio_summary["basis"] == t.rio_summary["basis"] == "amount"
+    assert g.summary["climate_share"] > 5 * t.summary["climate_share"]
+    assert g.summary["basis"] == t.summary["basis"] == "amount"
 
 
 def test_totals_are_not_counted_as_lines(fake_ai, green_pdf):
     a = analyse(green_pdf, "g.pdf")
-    assert not a.rio["programme"].str.lower().str.startswith("total").any()
-    assert a.rio_summary["total_amount"] == pytest.approx(a.rio["amount"].sum())
+    assert not a.lines["programme"].str.lower().str.startswith("total").any()
+    assert a.summary["total_amount"] == pytest.approx(a.lines["amount"].sum())
 
 
-def test_both_taxonomies_cover_the_same_lines(fake_ai, green_pdf):
+def test_every_line_gets_a_code_a_level_and_its_climate_part(fake_ai, green_pdf):
     a = analyse(green_pdf, "g.pdf")
-    assert list(a.rio["line"]) == list(a.eu["line"]) == list(range(1, len(a.rio) + 1))
-    assert a.rio["amount"].equals(a.eu["amount"]) and a.stats["lines"] == len(a.rio)
-    assert set(a.rio["rio_marker"]) <= {0, 1, 2} and set(a.eu["climate_tag"]) <= {C.TAG_GREEN, C.TAG_BROWN, C.TAG_NEUTRAL}
+    assert list(a.lines["line"]) == list(range(1, len(a.lines) + 1)) and a.stats["lines"] == len(a.lines)
+    assert set(a.lines["cbt_code"]) <= {"", C.CM, C.CA, C.CB} and set(a.lines["climate_level"]) <= {0, *C.LEVELS}
+    assert (a.lines["climate_amount"] <= a.lines["amount"]).all()
+    assert a.summary["climate"] == pytest.approx(a.lines["climate_amount"].sum())
 
 
 def test_the_document_is_described_from_its_first_pages(fake_ai, green_pdf):
@@ -71,8 +71,8 @@ def test_the_document_is_described_from_its_first_pages(fake_ai, green_pdf):
 def test_word_and_pdf_versions_find_the_same_projects(fake_ai, project_pdf, project_docx):
     p, d = analyse(project_pdf, "p.pdf"), analyse(project_docx, "p.docx")
     assert d.stats["lines"] >= 5 and p.stats["lines"] >= 5
-    assert "early warning system" in {t.lower() for t in p.rio["programme"]} & {t.lower() for t in d.rio["programme"]}
-    assert d.eu_summary["green_share"] > 0.3 and p.eu_summary["green_share"] > 0.3
+    assert "early warning system" in {t.lower() for t in p.lines["programme"]} & {t.lower() for t in d.lines["programme"]}
+    assert d.summary["climate_share"] > 0.3 and p.summary["climate_share"] > 0.3
 
 
 def test_progress_walks_through_the_stages_in_order(fake_ai, green_pdf):
@@ -126,16 +126,16 @@ def test_when_tagging_fails_for_every_line_the_analysis_stops(use_provider, gree
         analyse(green_pdf, "g.pdf")
 
 
-def test_lines_the_ai_skipped_fall_back_to_keywords_and_say_so(use_provider, green_pdf):
+def test_lines_the_ai_skipped_are_marked_not_assessed_and_say_so(use_provider, green_pdf):
     def drop_some(out):
         return {"tags": [t for t in out["tags"] if t["id"] % 4]}
 
     use_provider(Variant(tag=drop_some))
     a = analyse(green_pdf, "g.pdf")
-    assert a.stats["rules_only"] > 0
-    assert any("checked with keywords only" in i["message"] for i in a.issues)
-    assert (a.rio["tag_method"] == C.DECIDED_RULES).sum() > 0 and (a.eu["tag_method"] == C.DECIDED_RULES).sum() > 0
-    assert len(a.rio) == a.stats["lines"]
+    assert a.stats["not_assessed"] > 0
+    assert any("could not be assessed" in i["message"] for i in a.issues)
+    missing = a.lines["tag_method"] == C.DECIDED_MISSING
+    assert missing.sum() > 0 and (a.lines.loc[missing, "climate_amount"] == 0).all() and len(a.lines) == a.stats["lines"]
 
 
 def multi_page_pdf(pages=6, rows=12):
@@ -161,7 +161,7 @@ def test_a_section_that_cannot_be_read_is_reported_and_the_rest_is_kept(use_prov
     a = analyse(multi_page_pdf(), "long.pdf")
     assert a.stats["sections"] > 1 and a.stats["lines"] > 20
     assert any("could not be read" in i["message"] for i in a.issues)
-    assert "solar power programme" not in {t.lower() for t in a.rio["programme"]}
+    assert "solar power programme" not in {t.lower() for t in a.lines["programme"]}
 
 
 def test_a_budget_without_amounts_is_counted_by_lines(use_provider, green_pdf):
@@ -170,7 +170,7 @@ def test_a_budget_without_amounts_is_counted_by_lines(use_provider, green_pdf):
 
     use_provider(Variant(extract=no_amounts))
     a = analyse(green_pdf, "g.pdf")
-    assert a.rio_summary["basis"] == "lines" and a.rio_summary["has_amount"] is False
+    assert a.summary["basis"] == "lines" and a.summary["has_amount"] is False
     assert any("number of budget lines" in i["message"] for i in a.issues)
 
 
@@ -205,7 +205,7 @@ def pair(fake_ai, green_pdf, traditional_pdf):
     return analyse(green_pdf, "g.pdf"), analyse(traditional_pdf, "t.pdf")
 
 
-def test_the_greener_budget_scores_higher(pair):
+def test_the_budget_with_more_climate_spending_scores_higher(pair):
     a, b = pair
     c = compare_budgets(a, b)
     assert c.scores["A"] > c.scores["B"] and 0 <= c.scores["B"] <= 100 and c.summary == "Fake summary."
@@ -224,7 +224,7 @@ def test_the_ai_score_cannot_stray_far_from_the_numbers(pair, use_provider):
     for key in "AB":
         guard = c.rubric[key]["score"]
         assert abs(c.scores[key] - guard) <= pipeline.SCORE_GUARD
-    assert c.scores["A"] > c.scores["B"], "a clearly greener budget must not end up below"
+    assert c.scores["A"] > c.scores["B"], "a budget with clearly more climate spending must not end up below"
 
 
 def test_when_scoring_fails_the_numbers_alone_decide(pair, use_provider):
@@ -237,7 +237,7 @@ def test_when_scoring_fails_the_numbers_alone_decide(pair, use_provider):
     use_provider(NoScore())
     c = compare_budgets(a, b)
     assert c.scores == {k: c.rubric[k]["score"] for k in "AB"}
-    assert "scores higher" in c.summary and "supports climate goals" in c.reasons["A"]
+    assert "scores higher" in c.summary and "counts as climate spending" in c.reasons["A"]
 
 
 @pytest.mark.parametrize("error", [AIConfigError("k"), AIQuotaError("q"), Cancelled()])
@@ -268,8 +268,8 @@ def test_equal_budgets_get_a_fair_summary(fake_ai, use_provider, green_pdf):
 def test_the_brief_sent_to_the_ai_has_numbers_not_documents(pair):
     a, _ = pair
     b = brief(a, "A")
-    assert b["label"] == "A" and b["weighted_share"].endswith("%") and b["top_green"] and len(b["top_green"]) <= 5
-    assert all(len(t) <= 90 for t in b["top_green"])
+    assert b["label"] == "A" and b["climate_share"].endswith("%") and b["top_climate"] and len(b["top_climate"]) <= 5
+    assert all(len(t) <= 90 for t in b["top_climate"]) and b["cm_lines"] + b["ca_lines"] + b["cb_lines"] > 0
     assert a.name in b["name"] and "Testland" in b["name"]
 
 
@@ -281,4 +281,4 @@ REAL = os.getenv("CBT_REAL_DOCS", "")
 @pytest.mark.parametrize("path", sorted(Path(REAL).glob("*.pdf")) if REAL else [])
 def test_real_documents_run_through(fake_ai, path):
     a = analyse(path.read_bytes(), path.name)
-    assert a.stats["lines"] > 0 and 0 <= a.rio_summary["weighted_share"] <= 1
+    assert a.stats["lines"] > 0 and 0 <= a.summary["climate_share"] <= 1

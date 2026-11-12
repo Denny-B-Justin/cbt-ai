@@ -21,31 +21,31 @@ def sheet_rows(data, name):
     return [[c for c in row] for row in wb[name].iter_rows(values_only=True)]
 
 
-def test_evaluation_workbook_has_five_sheets(analyses):
+def test_evaluation_workbook_has_three_sheets(analyses):
     a, _ = analyses
     wb = openpyxl.load_workbook(io.BytesIO(export.evaluation_workbook(a)))
-    assert wb.sheetnames == ["About", "Summary", "Rio Markers", "EU Taxonomy", "Georgian Taxonomy"]
+    assert wb.sheetnames == ["About", "Summary", "Budget lines"]
 
 
-def test_line_sheets_hold_every_line_with_plain_headings(analyses):
+def test_the_lines_sheet_holds_every_line_with_plain_headings(analyses):
     a, _ = analyses
-    data = export.evaluation_workbook(a)
-    rio, eu = sheet_rows(data, "Rio Markers"), sheet_rows(data, "EU Taxonomy")
-    assert len(rio) == len(eu) == a.stats["lines"] + 1
-    assert rio[0][:4] == ["Line", "Page", "Ministry", "Budget line"] and rio[0][4].startswith("Amount") and "Rio marker" in rio[0] and "Why" in rio[0]
-    assert "Climate tag" in eu[0] and "Main objective" in eu[0] and "Decided by" in eu[0]
-    banned = ("rio_", "eu_", "tag_method", "decided_by", "climate_tag")
-    assert not any(str(h).startswith(banned) for h in rio[0] + eu[0] if h)
+    rows = sheet_rows(export.evaluation_workbook(a), "Budget lines")
+    assert len(rows) == a.stats["lines"] + 1
+    head = rows[0]
+    assert head[:4] == ["Line", "Page", "Ministry", "Budget line"] and head[4].startswith("Amount")
+    for name in ("CBT code", "Climate level", "Climate part", "Sector", "Decided by", "Why"):
+        assert name in head
+    banned = ("cbt_", "climate_", "tag_method", "decided_by", "q1_")
+    assert not any(str(h).startswith(banned) for h in head if h)
 
 
-def test_amounts_are_numbers_and_markers_are_readable(analyses):
+def test_amounts_are_numbers_and_tags_are_readable(analyses):
     a, _ = analyses
-    rio = sheet_rows(export.evaluation_workbook(a), "Rio Markers")
-    header = rio[0]
-    amounts = [r[4] for r in rio[1:]]
-    assert all(isinstance(v, (int, float)) or v is None for v in amounts)
-    markers = {r[header.index("Rio marker")] for r in rio[1:]}
-    assert markers <= {"%d · %s" % (k, v) for k, v in C.RIO_LABELS.items()}
+    rows = sheet_rows(export.evaluation_workbook(a), "Budget lines")
+    head = rows[0]
+    assert all(isinstance(r[4], (int, float)) or r[4] is None for r in rows[1:])
+    assert {r[head.index("CBT code")] for r in rows[1:]} <= set(C.CODE_LABELS.values()) | {C.NOT_TAGGED}
+    assert {r[head.index("Climate level")] for r in rows[1:]} <= set(C.LEVEL_LABELS.values()) | {C.NOT_TAGGED}
 
 
 def test_summary_sheet_matches_the_screen_numbers(analyses):
@@ -53,8 +53,9 @@ def test_summary_sheet_matches_the_screen_numbers(analyses):
     rows = sheet_rows(export.evaluation_workbook(a), "Summary")
     values = {(r[0], r[1]): r[2] for r in rows[1:]}
     from utils.formatting import fmt_pct
-    assert values[(C.KIND_LABELS[C.KIND_EU], "Green share")] == fmt_pct(a.eu_summary["green_share"])
-    assert values[("General", "Budget lines assessed")] == a.rio_summary["lines"]
+    assert values[("Shares", "Mitigation")] == fmt_pct(a.summary["mitigation_share"])
+    assert values[("General", "Budget lines assessed")] == a.summary["lines"]
+    assert values[("Lines", "Climate-tagged lines")] == a.summary["tagged_lines"]
 
 
 def test_about_sheet_tells_people_to_review(analyses):
@@ -65,11 +66,11 @@ def test_about_sheet_tells_people_to_review(analyses):
 
 def test_text_from_a_document_never_becomes_a_formula(analyses):
     a, _ = analyses
-    a.rio.loc[0, "programme"] = "=HYPERLINK(\"http://example.com\",\"click\")"
-    a.rio.loc[1, "rationale"] = "=1+1"
+    a.lines.loc[0, "programme"] = "=HYPERLINK(\"http://example.com\",\"click\")"
+    a.lines.loc[1, "rationale"] = "=1+1"
     data = export.evaluation_workbook(a)
     wb = openpyxl.load_workbook(io.BytesIO(data))
-    cells = [c for row in wb["Rio Markers"].iter_rows() for c in row if isinstance(c.value, str) and c.value.startswith("=")]
+    cells = [c for row in wb["Budget lines"].iter_rows() for c in row if isinstance(c.value, str) and c.value.startswith("=")]
     assert len(cells) == 2 and all(c.data_type == "s" for c in cells)
 
 

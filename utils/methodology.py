@@ -10,9 +10,9 @@ from dash import html
 from . import components as ui
 from . import constants as C
 
-SECTIONS = [("idea", "The idea in short"), ("steps", "From document to results"), ("rio", "Rio Markers"), ("eu", "EU Taxonomy"),
-            ("georgia", "Georgian Taxonomy"), ("skip", "Spending we do not count"), ("shares", "How the shares are worked out"), ("sure", "How sure are we?"),
-            ("score", "The overall score"), ("know", "Good to know"), ("words", "Words used in this tool")]
+SECTIONS = [("idea", "The idea in short"), ("steps", "From document to results"), ("questions", "The four guiding questions"),
+            ("levels", "The four levels"), ("rules", "What counts and what does not"), ("shares", "How the shares are worked out"),
+            ("sure", "How sure are we?"), ("score", "The overall score"), ("know", "Good to know"), ("words", "Words used in this tool")]
 
 
 def _section(sid: str, title: str, *children: Any) -> html.Section:
@@ -48,97 +48,66 @@ def _swatch(colour: str) -> html.Span:
     return html.Span(className="swatch", style={"background": colour})
 
 
-def _georgia() -> html.Section:
-    return _section("georgia", "Georgian Taxonomy",
-                    _p("The Georgian Taxonomy follows the handbook ", html.Em("Climate Budget Tagging in Georgia"),
-                       " (Ministry of Environmental Protection and Agriculture of Georgia and the World Bank, June 2025). "
-                       "It is a separate reading of every line, with its own questions; it does not reuse the Rio Markers or EU Taxonomy tags."),
-                    _p("Each line is checked with four guiding questions, in order:"),
-                    _list(["Q1: does the line involve activities that emit or absorb greenhouse gases?",
-                           "Q2: does it include a measure that cuts those emissions or absorbs more, for example renewable energy, insulation or new forests?",
-                           "Q3: does it involve risks from climate hazards such as floods, droughts, landslides, heat or storms?",
-                           "Q4: does it include a measure that lowers those risks or makes people and places more resilient?"]),
-                    _table(["Code", "When"], [
-                        [[_swatch(C.GEO_CODE_COLORS[C.GEO_CM]), C.GEO_CODE_LABELS[C.GEO_CM]], "Q1 and Q2 are yes."],
-                        [[_swatch(C.GEO_CODE_COLORS[C.GEO_CA]), C.GEO_CODE_LABELS[C.GEO_CA]], "Q3 and Q4 are yes."],
-                        [[_swatch(C.GEO_CODE_COLORS[C.GEO_CB]), C.GEO_CODE_LABELS[C.GEO_CB]], "Both of the above. The counted part is split half and half."]]),
-                    _p("Every climate-tagged line, even one with only a small or indirect link, is placed in one of four levels. "
-                       "The levels are classes chosen from what the line says, not measured percentages. Lines that are not climate-tagged have no level."),
-                    _table(["Level", "What it means", "How much of the line counts"],
-                           [[[_swatch(C.GEO_LEVEL_COLORS[lv]), C.GEO_LEVEL_LABELS[lv]], C.GEO_LEVEL_MEANING[lv], "%d%%" % lv] for lv in C.GEO_LEVELS]),
-                    _list([[html.Strong("Service costs are not tagged."), " Salaries, equipment, upkeep and general management that support a whole programme or ministry. "
-                            "Pay that belongs to one specific climate activity takes the level of that activity."],
-                           [html.Strong("Liveable or habitable wording."), " A line named for liveable or habitable cities, with no other climate measure, "
-                            "counts as adaptation at level %d. This is a rule of this tool, not of the handbook." % C.GEO_FLOOR_LEVEL]]),
-                    _callout("An example", "A line of 10 million at level 70 that is both mitigation and adaptation (CB) adds 7 million to the climate "
-                                           "share: 3.5 million to mitigation and 3.5 million to adaptation."))
-
-
 def _body() -> list[Any]:
-    w = C.RIO_WEIGHTS
-    significant = int(round(w[1] * 100))
-    objectives = [html.Li([html.Strong(C.EU_LABELS[k]), " - " + text]) for k, text in [
-        ("mitigation", "cutting greenhouse gas emissions, for example with renewable energy, energy saving or clean transport."),
-        ("adaptation", "getting ready for the effects of climate change, for example with flood protection or drought-resistant farming."),
-        ("water", "looking after water and the sea, for example with water and wastewater treatment."),
-        ("circular_economy", "wasting less and reusing more, for example with recycling and repair."),
-        ("pollution", "keeping air, water and soil clean."),
-        ("biodiversity", "protecting nature, for example with national parks and wildlife conservation.")]]
+    codes = [[_swatch(C.CODE_COLORS[c]), C.CODE_LABELS[c]] for c in C.CBT_CODES]
     return [
         _section("idea", "The idea in short",
-                 _p("Governments spend money on many things. Some of that spending helps to fight climate change, or helps people and places "
-                    "cope with its effects. This tool finds that spending and shows you how big it is."),
-                 _p("It looks at every line of a budget, for example ", html.Strong("Solar power plant"), " or ", html.Strong("Flood protection"),
-                    ", and asks: does this line help the climate? If it does, how much? The answers are written in three ways: "
-                    "the ", html.Strong("Rio Markers"), ", the ", html.Strong("EU Taxonomy"), " and the ", html.Strong("Georgian Taxonomy"),
-                    ". You see all three for every budget."),
+                 _p("Governments spend money on many things. Some of that spending helps to cut greenhouse gas emissions, or helps people and "
+                    "places cope with the effects of climate change. This tool finds that spending in a budget and shows you how big it is."),
+                 _p("It follows the method of ", html.Em("Climate Budget Tagging in Georgia: Handbook"), " (Ministry of Environmental Protection "
+                    "and Agriculture of Georgia and the World Bank, June 2025). Every budget line, for example ", html.Strong("Reforestation"),
+                    " or ", html.Strong("Irrigation system rehabilitation"), ", is checked with the handbook's four guiding questions, "
+                    "marked as mitigation, adaptation or both, and placed in one of four levels that say how much of it counts as climate spending."),
                  _callout("Think of it as a careful first reading",
                           "It saves many hours of work. But people should always check the results before using them in an official decision.")),
         _section("steps", "From document to results", _flow([
             ("You upload a document", "A PDF, Word or Excel file that contains a budget. It can be one page or hundreds of pages, or a spreadsheet with any number of sheets."),
             ("We read it", "We read the text and the tables, and work out what the document is: which country, which year and which currency."),
-            ("We find the budget lines", "Each programme, project or spending item becomes one budget line with its amount. "
+            ("We find the budget lines", "Each programme, sub-programme, project or activity becomes one budget line with its amount. "
                                          "Totals and subtotals are left out, so that no money is counted twice."),
-            ("We tag every line", "An AI assistant reads each line, much as a budget analyst would, and gives it a tag. "
-                                  "A second, simple check based on lists of climate words runs next to it. When both agree, we are more sure."),
-            ("We add up the amounts", "We work out which share of the budget goes to each tag."),
+            ("We tag every line", "An AI assistant reads each line, much as a budget analyst would, answers the four guiding questions, "
+                                  "and gives the line its code (CM, CA or CB) and its level (100, 70, 40 or 20)."),
+            ("We add up the amounts", "Each tagged line counts at its level. The tool adds up the climate part of every line."),
             ("You see the results", "Charts, a table of every line with the reason for its tag, and an Excel file you can download.")])),
-        _section("rio", "Rio Markers",
-                 _p("The Rio Markers are a widely used way to tag spending for climate. They were first used to follow development aid, and "
-                    "many governments now use them for their own budgets."),
-                 _p("Every line is judged on two aims, one at a time:"),
-                 _list([[html.Strong("Mitigation"), " - cutting greenhouse gas emissions. For example solar power, saving energy, clean transport, protecting forests."],
-                        [html.Strong("Adaptation"), " - getting ready for the effects of climate change. For example flood defences, drought-resistant crops, early warning systems."]]),
-                 _p("For each aim the line gets a score of 0, 1 or 2. The marker of the line is the higher of its two scores."),
-                 _table(["Marker", "Name", "What it means", "How much of the line counts"], [
-                     ["2", [_swatch(C.RIO_COLORS[2]), "Principal"], "Climate is the main purpose of the line.", "100%"],
-                     ["1", [_swatch(C.RIO_COLORS[1]), "Significant"], "Climate is an important goal, but not the only one.", "%d%%" % significant],
-                     ["0", [_swatch(C.RIO_COLORS[0]), "Not targeted"], "There is no clear link to climate.", "0%"]]),
-                 _p("The ", html.Strong("Rio-weighted share"), " adds the full amount of the Principal lines to %d%% of the amount of the Significant lines, "
-                    "and divides the result by the whole budget." % significant),
-                 _callout("An example", "A budget has 100 million. Principal lines add up to 10 million and Significant lines to 20 million. "
-                                        "The climate share is (10 + 0.%d × 20) ÷ 100 = 18%%." % significant)),
-        _section("eu", "EU Taxonomy",
-                 _p("The EU Taxonomy is a list of the activities that the European Union counts as good for the environment. "
-                    "We use it as a guide. It is not a legal test."),
-                 _p("A line is checked against six environmental goals:"),
-                 html.Ul(objectives, className="doc-list"),
-                 _p("Each line gets one of three tags:"),
-                 _table(["Tag", "What it means"], [
-                     [[_swatch(C.GREEN_COLOR), "Green"], "The line clearly serves at least one of the six goals. A line can serve more than one."],
-                     [[_swatch(C.BROWN_COLOR), "Brown"], "The line pays for something that harms the environment, for example coal, oil and gas, mining or waste burning."],
-                     [[_swatch(C.NO_DATA_COLOR), "Neutral"], "Everything else."]]),
-                 _p("The ", html.Strong("green share"), " is the part of the budget that is Green. The ", html.Strong("brown share"),
-                    " is the part that is Brown.")),
-        _georgia(),
-        _section("skip", "Spending we do not count",
-                 _p("Some spending is not climate spending, even when the name sounds green. We do not count:"),
-                 _list([[html.Strong("Routine running costs"), " such as salaries, pensions, rent, office costs, interest on debt, audits and routine upkeep."],
-                        [html.Strong("Names without substance"), ". A line is not climate spending just because it sits under an environment ministry, or because it contains a popular word. "
-                                                                 "We look at what the money is spent on."]]),
-                 _p("Lines for harmful activities, such as coal power, are tagged Brown and never count as climate spending.")),
+        _section("questions", "The four guiding questions",
+                 _p("Each line is checked with four questions, in order:"),
+                 _list(["Q1: does the line involve activities that emit or absorb greenhouse gases? For example burning fuel, transport, "
+                        "buildings, industry, farming, waste or forests.",
+                        "Q2: does it include a measure that cuts those emissions or absorbs more? For example renewable energy, insulation, "
+                        "efficient equipment, methane capture or new forests.",
+                        "Q3: does it involve risks from climate hazards? For example floods, droughts, landslides, mudflows, extreme heat, "
+                        "storms or sea-level rise.",
+                        "Q4: does it include a measure that lowers those risks or makes people and places more resilient?"]),
+                 _p("The answers give the line its code:"),
+                 _table(["Code", "When"], [
+                     [codes[0], "Q1 and Q2 are yes: the line helps to cut emissions (mitigation)."],
+                     [codes[1], "Q3 and Q4 are yes: the line helps to cope with climate change (adaptation)."],
+                     [codes[2], "Both of the above. The counted part is split half and half between mitigation and adaptation."],
+                     [[_swatch(C.NO_DATA_COLOR), C.NOT_TAGGED], "Neither. The line is not climate-tagged and does not count."]])),
+        _section("levels", "The four levels",
+                 _p("Every climate-tagged line, even one with only a small or indirect link to climate, is placed in one of four levels. "
+                    "The levels are classes chosen from what the line says, not measured percentages. Lines that are not climate-tagged have no level."),
+                 _table(["Level", "What it means", "How much of the line counts"],
+                        [[[_swatch(C.LEVEL_COLORS[lv]), C.LEVEL_LABELS[lv]], C.LEVEL_MEANING[lv], "%d%%" % lv] for lv in C.LEVELS]),
+                 _p("When the climate part of a line's cost is known, the closest level is used: a line where about 37% of the cost is "
+                    "climate work is placed at level 40. When two levels are possible, the lower one is chosen."),
+                 _callout("An example", "A line of 10 million at level 70 that is both mitigation and adaptation (CB) adds 7 million to the "
+                                        "climate spending: 3.5 million to mitigation and 3.5 million to adaptation.")),
+        _section("rules", "What counts and what does not",
+                 _list([[html.Strong("Service costs are not tagged."), " Salaries, equipment, upkeep and general management that support a "
+                         "whole programme or ministry are not counted."],
+                        [html.Strong("Pay for one climate activity counts with it."), " Salaries and benefits of the staff who deliver one "
+                         "specific climate activity take the level of that activity."],
+                        [html.Strong("Names without substance do not count."), " A line is not tagged just because it sits under an "
+                         "environment ministry or contains a popular word. We look at what the money is spent on."],
+                        [html.Strong("Lending and debt do not count."), " Loans, equity and debt repayment are not climate activities."],
+                        [html.Strong("Liveable or habitable wording."), " A line named for liveable or habitable cities or settlements, with no "
+                         "other climate measure, counts as adaptation at level %d. This is a rule of this tool, not of the handbook." % C.FLOOR_LEVEL]])),
         _section("shares", "How the shares are worked out",
-                 _list([[html.Strong("By amount."), " When the document gives amounts, every share is a share of the money."],
+                 _list([[html.Strong("The climate share"), " adds up the counted part of every climate-tagged line (its amount times its "
+                         "level) and divides it by the whole budget."],
+                        [html.Strong("Mitigation and adaptation shares"), " split that climate spending by code; a CB line counts half in each."],
+                        [html.Strong("By amount."), " When the document gives amounts, every share is a share of the money."],
                         [html.Strong("By number of lines."), " When a document has no amounts, shares are based on the number of budget lines. The tool tells you when this happens."],
                         [html.Strong("No double counting."), " Some documents show the same money in several ways, for example by ministry, by programme and by function. "
                                                              "We use one of these views: programmes first, then functions, then ministries. The tool tells you which one it used."],
@@ -146,50 +115,49 @@ def _body() -> list[Any]:
         _section("sure", "How sure are we?",
                  _p("Every line in the results table shows how sure we are (High, Medium or Low) and what the decision rested on:"),
                  _table(["Decided by", "What it means"], [
-                     [C.DECIDED_LABELS[C.DECIDED_CONFIRMED], "The AI assistant and the word check both found a link to climate."],
-                     [C.DECIDED_LABELS[C.DECIDED_AI_ONLY], "The AI assistant found a link to climate, but the word check did not. We are a little less sure."],
-                     [C.DECIDED_LABELS[C.DECIDED_NONE], "Neither check found a link to climate."],
-                     [C.DECIDED_LABELS[C.DECIDED_ADMIN], "The line is a routine running cost."],
-                     [C.DECIDED_LABELS[C.DECIDED_BROWN], "The line pays for a fossil or polluting activity."],
-                     [C.DECIDED_LABELS[C.DECIDED_REVIEW], "The two checks disagree in a way that matters. The line is not counted as climate spending, and we ask you to take a look."],
-                     [C.DECIDED_LABELS[C.DECIDED_RULES], "The AI assistant could not assess this line, so only the word check was used. We are not very sure."]]),
-                 _callout("Tip", "Sort the table by confidence, or search for \"second look\", to find the lines that deserve a human check first.", "ok")),
+                     [C.DECIDED_LABELS[C.DECIDED_BOTH], "Both a mitigation measure and an adaptation measure were found: the line is CB."],
+                     [C.DECIDED_LABELS[C.DECIDED_MIT], "A measure that cuts emissions was found: the line is CM."],
+                     [C.DECIDED_LABELS[C.DECIDED_ADP], "A measure that lowers climate risks was found: the line is CA."],
+                     [C.DECIDED_LABELS[C.DECIDED_FLOOR], "Only the liveable or habitable wording links the line to climate."],
+                     [C.DECIDED_LABELS[C.DECIDED_SERVICE], "The line is a service cost of its programme or ministry."],
+                     [C.DECIDED_LABELS[C.DECIDED_LINK], "The line touches emissions or climate hazards, but no measure was found."],
+                     [C.DECIDED_LABELS[C.DECIDED_NONE], "No link to climate was found."],
+                     [C.DECIDED_LABELS[C.DECIDED_MISSING], "The AI assistant could not assess this line. It does not count."]]),
+                 _callout("Tip", "Sort the table by confidence, or search for \"Not assessed\", to find the lines that deserve a human check first.", "ok")),
         _section("score", "The overall score",
                  _p("On the Compare Budget page, each budget gets an overall score from 0 to 100. It is a guide for comparing two budgets. It is not an official rating."),
                  _p("The score looks at four things, most important first:"),
-                 _list(["How much of the budget supports climate goals.",
-                        "How directly: Principal lines count for more than Significant lines.",
-                        "How broad: whether the budget covers both mitigation and adaptation, and how many of the six EU goals it serves.",
-                        "Harm: spending on fossil or polluting activities lowers the score."]),
+                 _list(["How much of the budget is climate spending (the climate share).",
+                        "How directly: climate spending in lines at levels 100 and 70 counts for more than spending at levels 40 and 20.",
+                        "Balance: whether the budget funds both mitigation and adaptation.",
+                        "Breadth: how many sectors carry climate spending."]),
                  _table(["Score", "What it usually means"], [
-                     ["0 - 10", "Almost no climate spending."], ["10 - 30", "A small share, mostly as a side benefit."],
-                     ["30 - 60", "A meaningful share, with some spending where climate is the main purpose."],
-                     ["60 - 85", "A large share, mostly with climate as the main purpose, and broad."], ["85 - 100", "Exceptional."]]),
+                     ["0 - 10", "Almost no climate spending."], ["10 - 30", "A small share, mostly at low levels."],
+                     ["30 - 60", "A meaningful share, with some lines at high levels."],
+                     ["60 - 85", "A large share, mostly at high levels, and broad."], ["85 - 100", "Exceptional."]]),
                  _p("The score is worked out by an AI assistant and checked against a fixed rule based on the numbers in the table. "
-                    "This keeps it fair: a budget with clearly more climate spending and no more harmful spending does not score lower.")),
+                    "This keeps it fair: a budget with clearly more climate spending does not score lower.")),
         _section("know", "Good to know",
                  _list([[html.Strong("A person should check the results."), " The AI assistant can make mistakes. If you run the same document twice, a few tags may differ."],
-                        [html.Strong("Text works best."), " Pages that are scans or pictures cannot be read. The tool tells you when it skips them."],
+                        [html.Strong("Text works best."), " Pages that are scans or pictures are harder to read. The tool tells you when it finds them."],
                         [html.Strong("Complicated tables can be misread."), " For the most important lines, compare the result with the original document."],
                         [html.Strong("Only what is written can be tagged."), " If a budget does not say what the money is for, we cannot tell."],
                         [html.Strong("Currencies are not converted."), " Amounts are shown in the currency of each document."],
                         [html.Strong("Your document is not stored."), " It is removed when you close or refresh the page. Download your results first if you want to keep them."],
                         [html.Strong("This is a demonstration."), " Your document is read by an online AI service, so please do not upload documents that must stay confidential."]])),
         _section("words", "Words used in this tool", _table(["Word", "Meaning"], [
-            ["Budget line", "One programme, project or spending item in a budget, with its amount."],
-            ["Mitigation", "Actions that cut greenhouse gas emissions."],
-            ["Adaptation", "Actions that help people and places cope with the effects of climate change."],
-            ["Principal", "Climate is the main purpose of the line."],
-            ["Significant", "Climate is an important goal, but not the only one."],
-            ["Green", "Serves at least one of the six EU environmental goals."],
-            ["Brown", "Pays for an activity that harms the environment."],
-            ["Neutral", "No clear link to climate or the environment."],
-            ["Share", "The part of the budget, in percent, that has a given tag."]]))]
+            ["Budget line", "One programme, sub-programme, project or activity in a budget, with its amount."],
+            ["Mitigation (CM)", "Actions that cut greenhouse gas emissions or absorb more of them."],
+            ["Adaptation (CA)", "Actions that help people and places cope with the effects of climate change."],
+            ["Both (CB)", "A line with mitigation and adaptation parts."],
+            ["Level", "The class of a climate-tagged line (100, 70, 40 or 20): the part of the line counted as climate spending."],
+            ["Service cost", "Salaries, equipment, upkeep or management that support a whole programme or ministry."],
+            ["Climate share", "The part of the budget, in percent, counted as climate spending."]]))]
 
 
 def layout() -> html.Div:
     return html.Div([
-        ui.page_intro("How budgets are tagged", "A short guide, in plain words, to how this tool decides which parts of a budget support climate goals.",
+        ui.page_intro("How budgets are tagged", "A short guide, in plain words, to how this tool applies the Georgian climate budget tagging method.",
                       eyebrow="Methodology"),
         html.Div(className="section-inner doc-layout", children=[
             html.Nav(className="doc-toc", **{"aria-label": "On this page"}, children=[

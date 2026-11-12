@@ -16,12 +16,8 @@ from utils import constants as C
 from utils import documents
 
 from . import lines as L
-from .eu_tagger import EUTaxonomyTagger
-from .georgia import georgia_frame, summarize_georgia
 from .metrics import rubric_score, summarize
-from .models import AIVerdict, GeoVerdict, LineText
-from .reconcile import combine_eu, combine_rio
-from .rio_tagger import RioMarkerTagger
+from .tags import tagged_frame
 
 ProgressFn = Callable[..., None]
 SCORE_GUARD = 15
@@ -37,14 +33,10 @@ class Analysis:
     filename: str
     info: DocInfo
     pages: int
-    rio: pd.DataFrame
-    eu: pd.DataFrame
-    rio_summary: dict[str, Any]
-    eu_summary: dict[str, Any]
+    lines: pd.DataFrame                 # one row per budget line: BASE_COLUMNS + tags + climate amounts + decided_by
+    summary: dict[str, Any]             # metrics.summarize
     stats: dict[str, Any]
     issues: list[dict[str, str]] = field(default_factory=list)
-    georgia: pd.DataFrame | None = None
-    georgia_summary: dict[str, Any] = field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -81,45 +73,6 @@ def _base_frame(lines: list[L.Line]) -> pd.DataFrame:
         "amount": [ln.amount if ln.amount is not None else np.nan for ln in lines]})
 
 
-def build_frames(lines: list[L.Line], verdicts: dict[int, AIVerdict | None], unique: list[L.Line],
-                 line_to_id: list[int]) -> dict[str, pd.DataFrame]:
-    rio_tagger, eu_tagger = RioMarkerTagger(), EUTaxonomyTagger()
-    rio_by_id: dict[int, dict[str, Any]] = {}
-    eu_by_id: dict[int, dict[str, Any]] = {}
-    for i, ln in enumerate(unique, start=1):
-        text = LineText(ln.title, ln.description, ln.ministry, ln.function_code)
-        ai = verdicts.get(i)
-        rio_by_id[i] = combine_rio(ai, rio_tagger.tag(text))
-        eu_by_id[i] = combine_eu(ai, eu_tagger.tag(text))
-
-    out = {}
-    for kind, by_id in ((C.KIND_RIO, rio_by_id), (C.KIND_EU, eu_by_id)):
-        df = pd.concat([_base_frame(lines), pd.DataFrame([by_id[i] for i in line_to_id])], axis=1)
-        df["decided_by"] = df["tag_method"].map(C.DECIDED_LABELS)
-        out[kind] = df
-    return out
-
-
-def _method_counts(df: pd.DataFrame, line_to_id: list[int]) -> dict[str, int]:
-    """Count distinct classifications (not lines) per deciding rule, labelled for the chart."""
-    first = pd.Series(line_to_id).drop_duplicates().index
-    counts = df.iloc[first]["tag_method"].value_counts()
-    return {C.DECIDED_LABELS[k]: int(v) for k, v in counts.items()}
-
-
-def _tag_georgia(items: list[dict[str, Any]], progress: ProgressFn,
-                 cancelled: Callable[[], bool] | None) -> tuple[dict[int, GeoVerdict], bool]:
-    """The Georgian pass. If it fails, the Rio Markers and EU Taxonomy results are kept and the user is told."""
-    def step(stage: str, detail: str = "") -> None:
-        progress(stage, "%s · %s" % (C.KIND_LABELS[C.KIND_GEO], detail) if detail else C.KIND_LABELS[C.KIND_GEO])
-    try:
-        return tasks.tag_budget_lines_georgia(items, step, cancelled), False
-    except AIError:
-        if cancelled and cancelled():
-            raise Cancelled()
-        return {}, True
-
-
 def analyse_document(data: bytes, filename: str, progress: ProgressFn,
                      cancelled: Callable[[], bool] | None = None) -> Analysis:
     started = time.time()
@@ -149,47 +102,34 @@ def analyse_document(data: bytes, filename: str, progress: ProgressFn,
         progress(C.STAGE_TAG)
         verdicts = tasks.tag_budget_lines(items, progress, cancelled)
 
-        geo_verdicts, geo_failed = _tag_georgia(items, progress, cancelled)
-
         progress(C.STAGE_CALC)
-        frames = build_frames(lines, verdicts, unique, line_to_id)
-        georgia = georgia_frame(_base_frame(lines), geo_verdicts, line_to_id)
+        df = tagged_frame(_base_frame(lines), verdicts, line_to_id)
     except documents.DocumentError as exc:
         raise AnalysisError(str(exc)) from exc
     except AIError as exc:
         raise AnalysisError(exc.user_message) from exc
 
-    rio, eu = frames[C.KIND_RIO], frames[C.KIND_EU]
-    rio_summary, eu_summary = summarize(C.KIND_RIO, rio), summarize(C.KIND_EU, eu)
-    georgia_summary = summarize_georgia(georgia)
-    n_rules_only = sum(1 for i in range(1, len(unique) + 1) if i not in verdicts)
-    n_geo_missing = sum(1 for i in range(1, len(unique) + 1) if i not in geo_verdicts)
+    summary = summarize(df)
+    not_assessed = sum(1 for i in range(1, len(unique) + 1) if i not in verdicts)
 
     for note in doc.notes:
         issues.append({"level": "info", "message": note})
     if extraction.failed_sections:
         issues.append({"level": "warn", "message": "Some parts of the document could not be read (%s). The results cover the "
                        "rest." % ", ".join(extraction.failed_sections[:6])})
-    if n_rules_only:
-        issues.append({"level": "warn", "message": "%d line(s) could not be assessed by the AI and were checked with keywords "
-                       "only. They are marked in the table." % n_rules_only})
-    if geo_failed:
-        issues.append({"level": "warn", "message": "The Georgian Taxonomy could not be applied to this document. The Rio Markers "
-                       "and EU Taxonomy results are complete."})
-    elif n_geo_missing:
-        issues.append({"level": "warn", "message": "%d line(s) could not be assessed with the Georgian Taxonomy. They are shown as "
-                       "not assessed and do not count as climate spending there." % n_geo_missing})
-    if not rio_summary["has_amount"]:
+    if not_assessed:
+        issues.append({"level": "warn", "message": "%d line(s) could not be assessed. They are marked \"Not assessed\" in the "
+                       "table and do not count as climate spending." % not_assessed})
+    if not summary["has_amount"]:
         issues.append({"level": "warn", "message": "No amounts could be found, so shares are based on the number of budget lines."})
-    elif rio_summary["amount_lines"] < 0.6 * rio_summary["lines"]:
+    elif summary["amount_lines"] < 0.6 * summary["lines"]:
         issues.append({"level": "info", "message": "Amounts were found for %d of %d lines. Shares are based on the lines that "
-                       "have an amount." % (rio_summary["amount_lines"], rio_summary["lines"])})
+                       "have an amount." % (summary["amount_lines"], summary["lines"])})
 
     stats = {"lines": len(lines), "unique_classifications": len(unique), "seconds": round(time.time() - started, 1),
-             "pages": doc.n_pages, "sections": extraction.sections, "rules_only": n_rules_only,
-             "rio_methods": _method_counts(rio, line_to_id),
-             "eu_methods": _method_counts(eu, line_to_id), "georgia_not_assessed": n_geo_missing, **{"selection_" + k: v for k, v in selection.stats.items()}}
-    return Analysis(filename, info, doc.n_pages, rio, eu, rio_summary, eu_summary, stats, issues, georgia, georgia_summary)
+             "pages": doc.n_pages, "sections": extraction.sections, "not_assessed": not_assessed,
+             **{"selection_" + k: v for k, v in selection.stats.items()}}
+    return Analysis(filename, info, doc.n_pages, df, summary, stats, issues)
 
 
 # ── comparing two analysed budgets ──────────────────────────────────────────
@@ -205,39 +145,30 @@ def _pct(v: float | None) -> str:
     return "n/a" if v is None else "%.1f%%" % (v * 100)
 
 
-def _top_lines(a: Analysis, mask: pd.Series, n: int = 5) -> list[str]:
-    df = a.rio[mask.values].copy()
-    if df.empty:
-        return []
-    key = df["amount"].fillna(-1) if a.rio_summary["has_amount"] else pd.Series(0, index=df.index)
-    top = df.assign(_k=key).sort_values("_k", ascending=False).head(n)
-    return [str(t)[:90] for t in top["programme"]]
+def _top_lines(a: Analysis, n: int = 5) -> list[str]:
+    key = "climate_amount" if a.summary["has_amount"] else "climate_level"
+    df = a.lines[a.lines[key].fillna(0) > 0]
+    return [str(t)[:90] for t in df.sort_values(key, ascending=False).head(n)["programme"]]
 
 
 def brief(a: Analysis, label: str) -> dict[str, Any]:
-    r, e = a.rio_summary, a.eu_summary
+    s = a.summary
     return {
-        "label": label, "name": a.name + (" (%s)" % a.subtitle if a.subtitle else ""), "lines": r["lines"], "basis": r["basis"],
-        "weighted_share": _pct(r["weighted_share"]), "principal_share": _pct(r["principal_share"]),
-        "significant_share": _pct(r["significant_share"]), "mitigation_share": _pct(r["mitigation_share"]),
-        "adaptation_share": _pct(r["adaptation_share"]), "green_share": _pct(e["green_share"]),
-        "brown_share": _pct(e["brown_share"]),
-        "objectives": ", ".join("{} {}".format(k.replace("_", " "), _pct(v)) for k, v in e["objective_shares"].items()),
-        "top_green": _top_lines(a, a.rio["rio_marker"] > 0), "top_brown": _top_lines(a, a.eu["climate_tag"] == C.TAG_BROWN, 3),
+        "label": label, "name": a.name + (" (%s)" % a.subtitle if a.subtitle else ""), "lines": s["lines"], "basis": s["basis"],
+        "climate_share": _pct(s["climate_share"]), "mitigation_share": _pct(s["mitigation_share"]),
+        "adaptation_share": _pct(s["adaptation_share"]), "high_level_share": _pct(s["high_level_share"]),
+        "cm_lines": s["code_lines"][C.CM], "ca_lines": s["code_lines"][C.CA], "cb_lines": s["code_lines"][C.CB],
+        "sectors": ", ".join(s["climate_sectors"]) or "none", "top_climate": _top_lines(a),
     }
 
 
 def _fallback_reason(a: Analysis) -> str:
-    r, e = a.rio_summary, a.eu_summary
-    text = "About %s of the budget supports climate goals" % _pct(r["weighted_share"])
-    if (e["brown_share"] or 0) >= 0.01:
-        text += ", and %s goes to fossil or polluting activities" % _pct(e["brown_share"])
-    return text + "."
+    return "About %s of the budget counts as climate spending." % _pct(a.summary["climate_share"])
 
 
 def compare_budgets(a: Analysis, b: Analysis, cancelled: Callable[[], bool] | None = None) -> Comparison:
     items = {"A": a, "B": b}
-    rubric = {k: rubric_score(v.rio_summary, v.eu_summary) for k, v in items.items()}
+    rubric = {k: rubric_score(v.summary) for k, v in items.items()}
     scores = {k: rubric[k]["score"] for k in items}
     reasons = {k: _fallback_reason(v) for k, v in items.items()}
     summary = ""

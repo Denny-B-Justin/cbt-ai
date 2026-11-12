@@ -1,4 +1,4 @@
-"""Plotly figures. Same look as the earlier tool: green and brown carry meaning, Rio levels are one green hue."""
+"""Plotly figures. Mitigation is green, adaptation blue, both orange; the four levels are one purple hue, dark to light."""
 
 from __future__ import annotations
 
@@ -53,51 +53,6 @@ def fig_donut(slices: Sequence[tuple[str, float, str]], unit: str = "amount", he
     return fig
 
 
-def fig_rio_donut(principal: float, significant: float, unit: str = "amount", height: int = 300) -> go.Figure:
-    rest = max(0.0, 1.0 - (principal or 0) - (significant or 0))
-    return fig_donut([("%s (2)" % C.RIO_LABELS[2], principal, C.RIO_COLORS[2]),
-                      ("%s (1)" % C.RIO_LABELS[1], significant, C.RIO_COLORS[1]),
-                      (C.RIO_LABELS[0], rest, C.RIO_COLORS[0])], unit, height)
-
-
-def fig_tag_donut(green: float, brown: float, unit: str = "amount", height: int = 300) -> go.Figure:
-    rest = max(0.0, 1.0 - (green or 0) - (brown or 0))
-    return fig_donut([(C.TAG_LABELS[C.TAG_GREEN], green, C.TAG_COLORS[C.TAG_GREEN]),
-                      (C.TAG_LABELS[C.TAG_BROWN], brown, C.TAG_COLORS[C.TAG_BROWN]),
-                      (C.TAG_LABELS[C.TAG_NEUTRAL], rest, C.TAG_COLORS[C.TAG_NEUTRAL])], unit, height)
-
-
-def fig_bar_h(labels: Sequence[str], values: Sequence[float], title: str = "", pct: bool = False,
-              color: str = C.INDIGO, height: int | None = None) -> go.Figure:
-    """Horizontal single-series bars, largest on top, value written at the bar end."""
-    labels, values = list(labels), [0.0 if is_missing(v) else float(v) for v in values]
-    if not labels:
-        return empty_figure()
-    order = np.argsort(values)
-    labels = [labels[i] for i in order]
-    values = [values[i] for i in order]
-    text = [fmt_pct(v) if pct else fmt_int(v) for v in values]
-    fig = go.Figure(go.Bar(
-        x=values, y=labels, orientation="h", marker=dict(color=color, cornerradius=4, line=dict(width=0)),
-        text=text, textposition="outside", cliponaxis=False,
-        textfont=dict(color=C.INK, size=12, family=C.FONT_STACK), hovertemplate="%{y}<br>%{text}<extra></extra>"))
-    fig.update_xaxes(tickformat=".0%" if pct else None, title=title, range=[0, max(max(values) * 1.18, 0.05 if pct else 1.0)])
-    return _base_layout(fig, height or max(150, 34 * len(labels) + 70), margin=dict(l=8, r=48, t=8, b=8))
-
-
-def fig_eu_objectives(summary: dict[str, Any]) -> go.Figure:
-    shares = summary.get("objective_shares") or {}
-    return fig_bar_h([C.EU_LABELS[k] for k in C.EU_OBJECTIVES], [shares.get(k) or 0.0 for k in C.EU_OBJECTIVES], pct=True,
-                     title="Share of %s serving the objective (a line can serve several)" % summary.get("basis", "amount"))
-
-
-def fig_methods(counts: dict[str, int], title: str = "Distinct classifications") -> go.Figure:
-    if not counts:
-        return empty_figure()
-    items = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
-    return fig_bar_h([k for k, _ in items], [v for _, v in items], title=title, color="#5E7A6B")
-
-
 def fig_compare(labels: Sequence[str], a_values: Sequence[float], b_values: Sequence[float], title: str = "",
                 names: tuple[str, str] = ("Budget A", "Budget B"), height: int | None = None) -> go.Figure:
     """Two budgets side by side as grouped horizontal bars (shares 0..1)."""
@@ -119,7 +74,7 @@ def fig_compare(labels: Sequence[str], a_values: Sequence[float], b_values: Sequ
     return fig
 
 
-# ── Georgian Taxonomy ───────────────────────────────────────────────────────
+# ── stacked bars and the level × code grid ──────────────────────────────────
 def fig_stacked_h(labels: Sequence[str], series: Sequence[tuple[str, Sequence[float], str]], value_fmt=fmt_int,
                   pct: bool = False, title: str = "", end_text: Sequence[str] | None = None, inside: bool = False,
                   height: int | None = None) -> go.Figure:
@@ -158,18 +113,18 @@ def fig_stacked_h(labels: Sequence[str], series: Sequence[tuple[str, Sequence[fl
     return fig
 
 
-def fig_geo_heatmap(level_code: Any, value_fmt=fmt_int, height: int = 300) -> go.Figure:
+def fig_level_code_heatmap(level_code: Any, value_fmt=fmt_int, height: int = 300) -> go.Figure:
     """Climate amount and number of lines for every level and CBT code."""
-    levels, codes = list(C.GEO_LEVELS), list(C.GEO_CODES)
+    levels, codes = list(C.LEVELS), list(C.CBT_CODES)
     z = [[float(level_code.at[(lv, c), "climate"]) for c in codes] for lv in levels]
     n = [[int(level_code.at[(lv, c), "lines"]) for c in codes] for lv in levels]
     if not any(any(row) for row in n):
         return empty_figure("No climate-tagged lines", height)
     text = [["%s<br>%s" % (value_fmt(v), plural(k, "line")) if k else "-" for v, k in zip(zr, nr)] for zr, nr in zip(z, n)]
     fig = go.Figure(go.Heatmap(
-        z=z, x=[C.GEO_CODE_LABELS[c] for c in codes], y=[C.GEO_LEVEL_LABELS[lv] for lv in levels], text=text,
+        z=z, x=[C.CODE_LABELS[c] for c in codes], y=[C.LEVEL_LABELS[lv] for lv in levels], text=text,
         texttemplate="%{text}", textfont=dict(size=12, family=C.FONT_STACK), xgap=2, ygap=2, showscale=False,
-        colorscale=[[0, "#F4F0FB"], [1, C.GEO_LEVEL_COLORS[100]]], zmin=0, hovertemplate="%{y} · %{x}<br>%{text}<extra></extra>"))
+        colorscale=[[0, "#F4F0FB"], [1, C.LEVEL_COLORS[100]]], zmin=0, hovertemplate="%{y} · %{x}<br>%{text}<extra></extra>"))
     fig.update_yaxes(autorange="reversed", showgrid=False)
     fig.update_xaxes(side="top", showgrid=False)
     return _base_layout(fig, height, margin=dict(l=8, r=8, t=8, b=8))

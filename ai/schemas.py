@@ -42,28 +42,10 @@ TAG_SCHEMA = {
         "type": "object",
         "properties": {
             "id": {"type": "integer"},
-            "rio_mitigation": {"type": "integer"}, "rio_adaptation": {"type": "integer"},
-            "eu_objectives": {"type": "array", "items": {"type": "string", "enum": C.EU_OBJECTIVES}},
-            "brown": {"type": "boolean"}, "administrative": {"type": "boolean"},
-            "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
-            "rationale": {"type": "string"},
-        },
-        "required": ["id", "rio_mitigation", "rio_adaptation", "eu_objectives", "brown", "administrative",
-                     "confidence", "rationale"],
-    }}},
-    "required": ["tags"],
-}
-
-GEO_TAG_SCHEMA = {
-    "type": "object",
-    "properties": {"georgia": {"type": "array", "items": {
-        "type": "object",
-        "properties": {
-            "id": {"type": "integer"},
             "q1_ghg_related": {"type": "boolean"}, "q2_mitigation_measure": {"type": "boolean"},
             "q3_climate_hazard_related": {"type": "boolean"}, "q4_adaptation_measure": {"type": "boolean"},
-            "sector": {"type": "string", "enum": C.GEO_SECTORS},
-            "function": {"type": "string", "enum": C.GEO_FUNCTIONS},
+            "sector": {"type": "string", "enum": C.SECTORS},
+            "function": {"type": "string", "enum": C.FUNCTIONS},
             "climate_level": {"type": "integer"},
             "livability_floor": {"type": "boolean"}, "service_oriented": {"type": "boolean"},
             "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
@@ -72,7 +54,7 @@ GEO_TAG_SCHEMA = {
         "required": ["id", "q1_ghg_related", "q2_mitigation_measure", "q3_climate_hazard_related", "q4_adaptation_measure",
                      "sector", "function", "climate_level", "livability_floor", "service_oriented", "confidence", "rationale"],
     }}},
-    "required": ["georgia"],
+    "required": ["tags"],
 }
 
 SCORE_SCHEMA = {

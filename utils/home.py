@@ -12,8 +12,8 @@ def layout() -> html.Section:
                         children=html.Div(className="hero-inner", children=[
                             html.P("CBT", className="eyebrow"),
                             html.H1(C.APP_NAME, className="hero-title"),
-                            html.P("Upload a budget document and see how much of it supports climate goals. Look at one budget, "
-                                   "or compare two side by side.", className="hero-lede"),
+                            html.P("Upload a budget document and see how much of it is climate spending, tagged with the Georgian "
+                                   "climate budget tagging method. Look at one budget, or compare two side by side.", className="hero-lede"),
                             html.Div(className="hero-actions", children=[
                                 dcc.Link("Evaluate Budget", href="?page=" + C.PAGE_EVALUATE, className="btn btn-primary btn-lg"),
                                 dcc.Link("Compare Budget", href="?page=" + C.PAGE_COMPARE, className="btn btn-teal btn-lg"),

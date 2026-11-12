@@ -21,28 +21,18 @@ def _amount_header(a: Analysis) -> str:
     return "Amount (%s)" % unit if unit else "Amount"
 
 
-def display_frame(a: Analysis, kind: str) -> pd.DataFrame:
+def display_frame(a: Analysis) -> pd.DataFrame:
     """The tagged lines with plain column names, the way people read them."""
-    df = {C.KIND_RIO: a.rio, C.KIND_EU: a.eu, C.KIND_GEO: a.georgia}[kind]
+    df = a.lines
     out = pd.DataFrame({"Line": df["line"], "Page": df["page"], "Ministry": df["ministry"], "Budget line": df["programme"],
                         _amount_header(a): df["amount"]})
-    if kind == C.KIND_RIO:
-        out["Rio marker"] = df["rio_marker"].map(lambda m: "%d · %s" % (m, C.RIO_LABELS[int(m)]))
-        out["Mitigation"] = df["rio_mitigation"]
-        out["Adaptation"] = df["rio_adaptation"]
-    elif kind == C.KIND_GEO:
-        out["CBT code"] = df["geo_code"].map(lambda c: C.GEO_CODE_LABELS.get(c, C.GEO_NOT_TAGGED))
-        out["Climate level"] = df["geo_level"].map(lambda lv: C.GEO_LEVEL_LABELS.get(int(lv), C.GEO_NOT_TAGGED))
-        out["Climate part"] = df["climate_amount"]
-        out["Mitigation part"] = df["mitigation_amount"]
-        out["Adaptation part"] = df["adaptation_amount"]
-        out["Sector"] = df["geo_sector"]
-        out["Function"] = df["geo_function"]
-    else:
-        flags = [C.EU_FLAG_COLUMNS[k] for k in C.EU_OBJECTIVES]
-        out["Climate tag"] = df["climate_tag"].map(lambda t: C.TAG_LABELS.get(t, t))
-        out["Main objective"] = df["eu_primary_objective"].map(lambda k: C.EU_LABELS.get(k, ""))
-        out["All objectives"] = df[flags].apply(lambda r: ", ".join(C.EU_LABELS[k] for k, f in zip(C.EU_OBJECTIVES, r) if f), axis=1)
+    out["CBT code"] = df["cbt_code"].map(lambda c: C.CODE_LABELS.get(c, C.NOT_TAGGED))
+    out["Climate level"] = df["climate_level"].map(lambda lv: C.LEVEL_LABELS.get(int(lv), C.NOT_TAGGED))
+    out["Climate part"] = df["climate_amount"]
+    out["Mitigation part"] = df["mitigation_amount"]
+    out["Adaptation part"] = df["adaptation_amount"]
+    out["Sector"] = df["sector"]
+    out["Function"] = df["function"]
     out["Confidence"] = df["confidence"].str.capitalize()
     out["Decided by"] = df["decided_by"]
     out["Why"] = df["rationale"]
@@ -50,26 +40,15 @@ def display_frame(a: Analysis, kind: str) -> pd.DataFrame:
 
 
 def summary_rows(a: Analysis) -> list[list[Any]]:
-    r, e = a.rio_summary, a.eu_summary
-    basis = "amount" if r["basis"] == "amount" else "number of lines"
+    s = a.summary
+    basis = "amount" if s["basis"] == "amount" else "number of lines"
     rows: list[list[Any]] = [
-        ["General", "Budget lines assessed", r["lines"]], ["General", "Shares are based on", basis],
-        [C.KIND_LABELS[C.KIND_RIO], "Climate share (Principal counts 100%, Significant counts 40%)", fmt_pct(r["weighted_share"])],
-        [C.KIND_LABELS[C.KIND_RIO], "Principal (2)", fmt_pct(r["principal_share"])],
-        [C.KIND_LABELS[C.KIND_RIO], "Significant (1)", fmt_pct(r["significant_share"])],
-        [C.KIND_LABELS[C.KIND_RIO], "Mitigation", fmt_pct(r["mitigation_share"])],
-        [C.KIND_LABELS[C.KIND_RIO], "Adaptation", fmt_pct(r["adaptation_share"])],
-        [C.KIND_LABELS[C.KIND_EU], "Green share", fmt_pct(e["green_share"])],
-        [C.KIND_LABELS[C.KIND_EU], "Brown share", fmt_pct(e["brown_share"])]]
-    rows += [[C.KIND_LABELS[C.KIND_EU], C.EU_LABELS[k], fmt_pct(e["objective_shares"].get(k))] for k in C.EU_OBJECTIVES]
-    g, geo = a.georgia_summary, C.KIND_LABELS[C.KIND_GEO]
-    if g:
-        rows += [[geo, "Climate share (each tagged line counts at its level)", fmt_pct(g["climate_share"])],
-                 [geo, "Mitigation", fmt_pct(g["mitigation_share"])], [geo, "Adaptation", fmt_pct(g["adaptation_share"])],
-                 [geo, "Climate-tagged lines", g["tagged_lines"]]]
-        rows += [[geo, C.GEO_CODE_LABELS[c] + " (lines)", g["code_lines"][c]] for c in C.GEO_CODES]
-        rows += [[geo, "%s, share of the climate spend" % C.GEO_LEVEL_LABELS[lv], fmt_pct(g["level_of_climate"][lv])]
-                 for lv in C.GEO_LEVELS]
+        ["General", "Budget lines assessed", s["lines"]], ["General", "Shares are based on", basis],
+        ["Shares", "Climate share (each climate-tagged line counts at its level)", fmt_pct(s["climate_share"])],
+        ["Shares", "Mitigation", fmt_pct(s["mitigation_share"])], ["Shares", "Adaptation", fmt_pct(s["adaptation_share"])],
+        ["Lines", "Climate-tagged lines", s["tagged_lines"]]]
+    rows += [["Lines", C.CODE_LABELS[c], s["code_lines"][c]] for c in C.CBT_CODES]
+    rows += [["Levels", "%s, share of the climate spend" % C.LEVEL_LABELS[lv], fmt_pct(s["level_of_climate"][lv])] for lv in C.LEVELS]
     return rows
 
 
@@ -86,7 +65,7 @@ def _fit(writer: pd.ExcelWriter) -> None:
 
 
 def _about(a: Analysis) -> list[list[Any]]:
-    return [["Document", a.name], ["Country", a.info.country or NO_VALUE], ["Year", a.info.year or NO_VALUE],
+    return [["Document", a.name], ["Method", C.METHOD_SOURCE], ["Country", a.info.country or NO_VALUE], ["Year", a.info.year or NO_VALUE],
             ["Currency and unit", a.info.unit_text or NO_VALUE], ["Pages read", a.pages],
             ["Prepared on", datetime.now(timezone.utc).strftime("%d %b %Y")],
             ["Note", "Tags are produced with the help of AI and should be reviewed before they are used."]]
@@ -97,10 +76,7 @@ def evaluation_workbook(a: Analysis) -> bytes:
     with pd.ExcelWriter(out, engine="openpyxl") as xl:
         pd.DataFrame(_about(a), columns=["Item", "Value"]).to_excel(xl, sheet_name="About", index=False)
         pd.DataFrame(summary_rows(a), columns=["Method", "Measure", "Value"]).to_excel(xl, sheet_name="Summary", index=False)
-        display_frame(a, C.KIND_RIO).to_excel(xl, sheet_name="Rio Markers", index=False)
-        display_frame(a, C.KIND_EU).to_excel(xl, sheet_name="EU Taxonomy", index=False)
-        if a.georgia is not None:
-            display_frame(a, C.KIND_GEO).to_excel(xl, sheet_name="Georgian Taxonomy", index=False)
+        display_frame(a).to_excel(xl, sheet_name="Budget lines", index=False)
         _fit(xl)
     return out.getvalue()
 

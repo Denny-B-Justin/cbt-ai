@@ -100,14 +100,14 @@ def check_tagging(result) -> None:
         fail("{}: {}".format(type(exc).__name__, exc))
         return
     done(t, "%d of %d lines tagged" % (len(verdicts), len(items)))
-    print("   %-38s %4s %4s  %-12s %s" % ("line", "mit", "adp", "EU", "why"))
+    print("   %-38s %4s %5s  %-14s %s" % ("line", "code", "level", "sector", "why"))
     for it in items:
         v = verdicts.get(it["id"])
         if v is None:
             print("   %-38s  (no verdict)" % it["title"][:38])
             continue
-        eu = "brown" if v.brown else ",".join(v.eu_objectives) or ("admin" if v.administrative else "-")
-        print("   %-38s %4d %4d  %-12s %s" % (it["title"][:38], v.rio_mitigation, v.rio_adaptation, eu[:12], v.rationale[:60]))
+        code = "CB" if v.mitigation and v.adaptation else "CM" if v.mitigation else "CA" if v.adaptation else "-"
+        print("   %-38s %4s %5s  %-14s %s" % (it["title"][:38], code, v.level or "-", v.sector[:14], v.rationale[:60]))
     if len(verdicts) < len(items):
         fail("%d line(s) came back without a verdict" % (len(items) - len(verdicts)))
 
@@ -123,11 +123,12 @@ def check_full(path: Path) -> None:
     except (pipeline.AnalysisError, AIError) as exc:
         fail("{}: {}".format(type(exc).__name__, exc))
         return
-    done(t, "%d lines, %s" % (a.stats["lines"], a.stats["rio_methods"]))
-    r, e = a.rio_summary, a.eu_summary
-    print("   Rio weighted share {:.1f}% | principal {:.1f}% | significant {:.1f}%".format(
-        100 * (r["weighted_share"] or 0), 100 * (r["principal_share"] or 0), 100 * (r["significant_share"] or 0)))
-    print("   EU green {:.1f}% | brown {:.1f}%".format(100 * (e["green_share"] or 0), 100 * (e["brown_share"] or 0)))
+    s = a.summary
+    done(t, "%d lines, %d climate-tagged (CM %d, CA %d, CB %d)" % (a.stats["lines"], s["tagged_lines"], s["code_lines"]["CM"],
+                                                                 s["code_lines"]["CA"], s["code_lines"]["CB"]))
+    print("   climate share {:.1f}% | mitigation {:.1f}% | adaptation {:.1f}%".format(
+        100 * (s["climate_share"] or 0), 100 * (s["mitigation_share"] or 0), 100 * (s["adaptation_share"] or 0)))
+    print("   climate spend by level: " + " | ".join("{} {:.0f}%".format(lv, 100 * (s["level_of_climate"][lv] or 0)) for lv in (100, 70, 40, 20)))
     for issue in a.issues:
         print("   note: %s" % issue["message"])
     print("   scores A/B: {} / {}  (numbers alone: {} / {})".format(
@@ -138,7 +139,7 @@ def check_full(path: Path) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--full", action="store_true", help="run a complete analysis and a comparison")
-    parser.add_argument("--file", type=Path, default=SAMPLE, help="a PDF, Word or Excel budget (default: the green sample)")
+    parser.add_argument("--file", type=Path, default=SAMPLE, help="a PDF, Word or Excel budget (default: the climate-focused sample)")
     parser.add_argument("--fake", action="store_true", help="use the built-in stand-in instead of the real service")
     args = parser.parse_args()
 

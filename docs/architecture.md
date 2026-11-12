@@ -14,13 +14,13 @@ app.py ─────────────── Dash app, layout function, 
         ├─ utils/documents.py     bytes → pages → chunks
         ├─ ai/tasks.py            the four model jobs (describe, extract, tag, score)
         │     └─ ai/client.py → ai/<provider>.py                      the only code that touches a model
-        └─ tagging/{lines,rio_tagger,eu_tagger,reconcile,metrics}.py  deterministic logic
+        └─ tagging/{lines,tags,metrics}.py  deterministic logic
 ```
 
 Rules the code follows, which keep the layers replaceable:
 
 - Pages never import `ai/` except `ai.client.is_configured()` for the "not set up" message. They call `tagging.pipeline`.
-- `tagging/` does not know which model is used. It receives `AIVerdict` objects from `ai/tasks.py`.
+- `tagging/` does not know which model is used. It receives `Verdict` objects from `ai/tasks.py`.
 - `ai/tasks.py` does not know which provider is used. It calls `ai.client.ask_json`.
 - `utils/constants.py` holds names, labels, colours, limits and env var names. Labels shown to users live there so the
   site, the Excel files and the methodology page cannot drift apart.
@@ -63,8 +63,8 @@ bar. Both files are held in `session.Session.uploads` until Compare is pressed.
 | Field | Content |
 |---|---|
 | `info` | `DocInfo`: name, country, year, currency, unit (+ `unit_text`) |
-| `rio`, `eu` | one row per budget line: base columns (`line`, `page`, `code`, `ministry`, `programme`, `description`, `function_code`, `amount`) + tag columns + `decided_by` |
-| `rio_summary`, `eu_summary` | headline numbers from `metrics.summarize` (shares, per-objective shares, counts by deciding rule) |
+| `lines` | one row per budget line: base columns (`line`, `page`, `code`, `ministry`, `programme`, `description`, `function_code`, `amount`) + tags (`cbt_code`, `climate_level`, `sector`, `function`, Q1–Q4, `confidence`, `rationale`, `decided_by`) + `climate_amount`, `mitigation_amount`, `adaptation_amount` |
+| `summary` | headline numbers and grouped tables from `metrics.summarize` (shares, levels, CBT codes, sectors, ministries, functions, "decided by") |
 | `stats` | counts and timings (lines, sections, pages, selection statistics) |
 | `issues` | list of `{level, message}` shown above the results (scan pages, skipped sections, basis of the shares …) |
 

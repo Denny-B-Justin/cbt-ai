@@ -15,7 +15,7 @@ Automated tests never touch the network. The model is replaced in two ways, so e
 
 | Stand-in | Replaces | Used by |
 |---|---|---|
-| `tests/fake_llm.py::FakeProvider` | `ai/<provider>.py` (in process) | pipeline, UI and export tests. Reads `Title | amount` rows from the prompt and tags them with the keyword taggers; supports `delay`, `fail_first`, `error`. |
+| `tests/fake_llm.py::FakeProvider` | `ai/<provider>.py` (in process) | pipeline, UI and export tests. Reads `Title | amount` rows from the prompt and answers the guiding questions from a few climate words (solar, flood, …); supports `delay`, `fail_first`, `error`. |
 | `tests/fake_mai_server.py` | the Posit mAI Gateway | `test_mai_llm.py`: the real SDKs (GPT, Gemini) and httpx (Claude) talk to a local server that returns queued successes and errors |
 | `Scripted` provider in `test_tasks.py` | provider with arbitrary answers | task-level behaviour: splitting, second passes, normalisation |
 
@@ -30,9 +30,8 @@ Automated tests never touch the network. The model is replaced in two ways, so e
 | `test_formatting.py` | missing values, numbers and percentages, money in the document's unit, text helpers |
 | `test_documents.py` | PDF and Word reading, table rows, header/footer removal, scan notes, chunk coverage and order, PDF attachments, splitting, rejected files (type, size, password, page count) |
 | `test_lines.py` | amount parsing, merge by code, subtotals, folding, view choice, duplicates, negatives |
-| `test_taggers.py` | whole-word and plural matching, Rio levels and the higher-of-two rule, administrative exclusions, function codes before keywords, EU tags |
-| `test_reconcile.py` | the reconciliation table: no-AI fallback, administrative, Rio and EU agreement/disagreement, brown lines, keywords never making a line green |
-| `test_metrics.py` | shares by amount and by lines, missing amounts, rubric |
+| `test_tags.py` | consistent verdicts (the four levels only on tagged lines, snapping, service costs, liveable wording, Q2 without Q1), the tagging instructions, CM / CA / CB and the 50/50 split, "Not assessed" lines |
+| `test_metrics.py` | shares by amount and by lines, missing amounts, grouped tables adding up, rubric |
 | `test_ratelimit.py` | spacing, adaptive slow-down, retry schedule, give-up, cancel during back-off |
 | `test_mai_llm.py` | settings (family, default model, Claude endpoint, missing values), request shape per family (app id, mai-endpoint, schema, attachments), refused settings and output length, too-large requests, error mapping per HTTP status, no SDK retries, advised wait, unusable answers, the whole path through `ai.client` |
 | `test_tasks.py` | the four tasks incl. split-on-truncation, missing-id second pass, fatal errors, normalisation |

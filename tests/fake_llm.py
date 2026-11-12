@@ -9,16 +9,24 @@ from collections.abc import Sequence
 from typing import Any
 
 from ai.types import Attachment
-from tagging.eu_tagger import EUTaxonomyTagger
-from tagging.models import LineText
-from tagging.rio_tagger import RioMarkerTagger
-from utils import constants as C
+
+MITIGATION = ("solar", "wind", "insulation", "efficien", "reforestation", "planting trees", "electric", "renewable",
+              "methane", "recycling", "composting")
+ADAPTATION = ("flood", "drought", "early warning", "sea wall", "sea-level", "storm", "cyclone", "mangrove", "wetland",
+              "disaster", "resilien")
+STRONG = ("solar", "wind", "insulation", "reforestation", "electric", "flood", "drought", "early warning", "sea wall",
+          "mangrove", "cyclone")
+LIVEABLE = ("liveable", "livable", "habitable")
+SERVICE = ("salaries", "pensions", "administration", "office", "project management")
+SECTOR_WORDS = {"solar": "Energy", "wind": "Energy", "insulation": "Building", "efficien": "Building", "electric": "Transport",
+                "reforestation": "Forest", "trees": "Forest", "flood": "Water", "drought": "Agriculture", "irrigation": "Agriculture",
+                "recycling": "Waste", "composting": "Waste", "sea": "Coastal resorts", "mangrove": "Coastal resorts", "storm": "Water"}
 
 _NUM = re.compile(r"(\(?-?\d{1,3}(?:,\d{3})*(?:\.\d+)?\)?)\s*$")
 
 
 class FakeProvider:
-    """Reads 'Title ... 1,234.5' lines as budget lines and tags them with the keyword taggers."""
+    """Reads 'Title ... 1,234.5' lines as budget lines and answers the guiding questions from a few climate words."""
 
     def __init__(self, fail_first: int = 0, error: Exception = None, delay: float = 0.0):
         self.delay = delay
@@ -26,7 +34,6 @@ class FakeProvider:
         self.lock = threading.Lock()
         self.fail_first = fail_first
         self.error = error
-        self.rio, self.eu = RioMarkerTagger(), EUTaxonomyTagger()
 
     # provider interface
     def is_configured(self) -> bool:
@@ -46,8 +53,6 @@ class FakeProvider:
             raise self.error
         if "tags" in schema["properties"]:
             return self._tag(prompt)
-        if "georgia" in schema["properties"]:
-            return self._georgia(prompt)
         if "lines" in schema["properties"]:
             return self._extract(prompt)
         if "budgets" in schema["properties"]:
@@ -89,43 +94,36 @@ class FakeProvider:
 
     @staticmethod
     def _lines(prompt: str):
+        """(id, title, description) of every line in a tagging prompt."""
         body = prompt.split("<document>", 1)[1].rsplit("</document>", 1)[0]
         for raw in body.splitlines():
             m = re.match(r"\[(\d+)\] Title: (.*)", raw)
             if m:
-                parts = {p.split(": ", 1)[0]: p.split(": ", 1)[1] for p in m.group(2).split(" | ") if ": " in p}
-                yield int(m.group(1)), LineText(("Title: " + m.group(2)).split(" | ")[0][7:], parts.get("Description", ""),
-                                                parts.get("Ministry", ""))
+                title, *rest = m.group(2).split(" | ")
+                parts = {p.split(": ", 1)[0]: p.split(": ", 1)[1] for p in rest if ": " in p}
+                yield int(m.group(1)), title.lower(), parts.get("Description", "").lower()
 
     def _tag(self, prompt: str) -> dict:
+        """Answers the four guiding questions from a few words, the way the handbook examples read."""
         tags = []
-        for line_id, text in self._lines(prompt):
-            rio, eu = self.rio.tag(text), self.eu.tag(text)
-            admin = rio.method.endswith("EXCLUSION")
-            tags.append({"id": line_id, "rio_mitigation": 0 if admin else rio.mitigation,
-                         "rio_adaptation": 0 if admin else rio.adaptation,
-                         "eu_objectives": [] if admin or eu.tag != C.TAG_GREEN else [k for k in C.EU_OBJECTIVES if eu.objectives[k]],
-                         "brown": eu.tag == C.TAG_BROWN, "administrative": admin, "confidence": "high",
+        for line_id, title, description in self._lines(prompt):
+            text = title + " " + description
+            mit = [w for w in MITIGATION if w in text]
+            ada = [w for w in ADAPTATION if w in text]
+            floor = any(w in text for w in LIVEABLE)
+            service = not (mit or ada or floor) and any(w in text for w in SERVICE)
+            strong = [w for w in mit + ada if w in STRONG]
+            level = 100 if any(w in title for w in strong) else 70 if strong else 40 if mit or ada else 20 if floor else 0
+            sector = next((v for k, v in SECTOR_WORDS.items() if k in text), "Cross-cutting") if mit or ada or floor else "None"
+            tags.append({"id": line_id, "q1_ghg_related": bool(mit), "q2_mitigation_measure": bool(mit),
+                         "q3_climate_hazard_related": bool(ada), "q4_adaptation_measure": bool(ada), "sector": sector,
+                         "function": "Environmental protection" if mit or ada else "Not known", "climate_level": level,
+                         "livability_floor": floor, "service_oriented": service, "confidence": "high",
                          "rationale": "Fake verdict for testing."})
         return {"tags": tags}
 
-    def _georgia(self, prompt: str) -> dict:
-        out = []
-        for line_id, text in self._lines(prompt):
-            rio = self.rio.tag(text)
-            admin = rio.method.endswith("EXCLUSION")
-            mit, ada = rio.mitigation > 0 and not admin, rio.adaptation > 0 and not admin
-            floor = any(w in text.text for w in ("liveable", "livable", "habitable"))
-            out.append({"id": line_id, "q1_ghg_related": mit, "q2_mitigation_measure": mit, "q3_climate_hazard_related": ada,
-                        "q4_adaptation_measure": ada, "sector": "Cross-cutting" if mit or ada or floor else "None",
-                        "function": "Environmental protection" if mit or ada else "Not known",
-                        "climate_level": {2: 100, 1: 40}.get(rio.marker, 0) if mit or ada else 20 if floor else 0,
-                        "livability_floor": floor, "service_oriented": admin, "confidence": "high",
-                        "rationale": "Fake Georgian verdict for testing."})
-        return {"georgia": out}
-
     def _score(self, prompt: str) -> dict:
         out = []
-        for label, share in re.findall(r"Budget ([AB]):.*?climate-weighted share: ([\d.]+)%", prompt, re.S):
+        for label, share in re.findall(r"Budget ([AB]):.*?climate share: ([\d.]+)%", prompt, re.S):
             out.append({"label": label, "score": min(100, int(float(share) * 4)), "reason": "Fake score reason."})
         return {"budgets": out, "summary": "Fake summary."}
